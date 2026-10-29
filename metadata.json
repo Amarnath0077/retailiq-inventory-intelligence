@@ -1,0 +1,6 @@
+{
+  "name": "RetailIQ — AI-Powered Retail Inventory Intelligence",
+  "description": "Enterprise-grade retail inventory intelligence platform and natural-language AI inventory assistant for AtliQ T-Shirts inventory data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

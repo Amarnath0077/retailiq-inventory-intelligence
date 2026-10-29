@@ -1,0 +1,26 @@
+[
+  {
+    "id": "usr_admin_961a745f",
+    "email": "manager@retailiq.internal",
+    "name": "Inventory Operations Lead",
+    "role": "admin",
+    "emailVerified": true,
+    "provider": "local",
+    "createdAt": "2026-10-29T11:01:50.492Z",
+    "lastLoginAt": "2026-10-29T11:04:07.627Z",
+    "passwordHash": "8a8a373aaa4b22e056961d97cdb77a92a5df46f6d32dfcdf3ee6534e538fd68e1550e1fcb44212e315059beebd1d4330609683b5b53323af36a1d208196ecf66",
+    "passwordSalt": "60007af1635fe10ab3d86aab7acb48d9"
+  },
+  {
+    "id": "usr_d789fe80f2f6bffd",
+    "email": "elena@nordicretail.com",
+    "name": "Elena Rostova",
+    "role": "inventory_manager",
+    "emailVerified": true,
+    "provider": "local",
+    "createdAt": "2026-10-29T11:02:56.887Z",
+    "lastLoginAt": "2026-10-29T11:02:56.887Z",
+    "passwordHash": "91f6ae37c7aefa2936e5464658bcb4676ec0ac99cdc13fdabac22a0eb05488e3194b7de0381803a4c7bc2c7c425c09ddc336278e10c5da31a316c2e55350d8bf",
+    "passwordSalt": "ac4e4214c66b6fb34da9c174c4a21754"
+  }
+]
