@@ -28,8 +28,18 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ metrics, isLoading
     );
   }
 
-  if (!metrics) {
-    return <div className="p-8 text-center text-xs text-[#7A807A]">Analytics data currently unavailable.</div>;
+  if (!metrics || metrics.totalProducts === 0) {
+    return (
+      <div className="p-8 md:p-12 text-center max-w-xl mx-auto my-12 bg-white rounded-lg border border-[#E4E5DC]">
+        <div className="w-12 h-12 rounded-xl bg-[#E8EFEA] text-[#245C45] flex items-center justify-center mx-auto mb-3">
+          <BarChart3 className="w-6 h-6" />
+        </div>
+        <h3 className="text-base font-bold text-[#252B28] mb-1">No inventory data available</h3>
+        <p className="text-xs text-[#6F756F]">
+          Connect your database or import a CSV/PDF file to get started. Stock distribution, entity concentrations, and valuation analytics will calculate once inventory records are loaded.
+        </p>
+      </div>
+    );
   }
 
   // Filter calculations based on brand filter

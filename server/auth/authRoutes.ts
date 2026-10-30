@@ -5,18 +5,72 @@ import { requireAuth, extractAuthToken } from './authMiddleware.ts';
 export const authRouter = Router();
 
 function getAppOrigin(req: Request): string {
+  // 1. Explicit client-supplied origin query parameter
+  if (typeof req.query.origin === 'string' && req.query.origin.startsWith('http')) {
+    try {
+      const u = new URL(req.query.origin);
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      // Invalid URL, continue to fallback checks
+    }
+  }
+  // 2. Request Origin header
+  if (req.headers.origin && typeof req.headers.origin === 'string' && req.headers.origin.startsWith('http')) {
+    return req.headers.origin.replace(/\/+$/, '');
+  }
+  // 3. Request Referer header
+  if (req.headers.referer && typeof req.headers.referer === 'string' && req.headers.referer.startsWith('http')) {
+    try {
+      const u = new URL(req.headers.referer);
+      return `${u.protocol}//${u.host}`;
+    } catch {}
+  }
+  // 4. Vercel production domain
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.replace(/\/+$/, '')}`;
+  }
+  // 5. Vercel deployment host
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/\/+$/, '')}`;
+  }
+  // 6. Explicit custom APP_URL
   if (process.env.APP_URL && process.env.APP_URL.trim() && !process.env.APP_URL.includes('MY_APP_URL')) {
     return process.env.APP_URL.replace(/\/+$/, '');
   }
-  const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+  // 7. Request proxy headers
+  const rawProto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
   const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost:3000';
+  const proto = (host.includes('.vercel.app') || host.includes('.run.app')) ? 'https' : rawProto;
   return `${proto}://${host}`;
+}
+
+const DEFAULT_GOOGLE_CLIENT_ID = '966798520485-fokbhckrli0jdnbactkfqds8uq321pe7.apps.googleusercontent.com';
+
+let dynamicGoogleClientSecret: string | null = null;
+
+function getGoogleClientSecret(): string {
+  if (dynamicGoogleClientSecret && dynamicGoogleClientSecret.trim()) {
+    return dynamicGoogleClientSecret.trim();
+  }
+  return process.env.GOOGLE_CLIENT_SECRET || '';
+}
+
+function getGoogleClientId(): string {
+  if (
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_ID.trim() &&
+    process.env.GOOGLE_CLIENT_ID !== 'MY_GOOGLE_CLIENT_ID' &&
+    process.env.GOOGLE_CLIENT_ID !== '12783657335-pkch56vau5efq23n2o1uaad19gclt2k5.apps.googleusercontent.com'
+  ) {
+    return process.env.GOOGLE_CLIENT_ID.trim();
+  }
+  return DEFAULT_GOOGLE_CLIENT_ID;
 }
 
 // GET /api/auth/config - Public configuration for OAuth and UI setup
 authRouter.get('/config', (req: Request, res: Response) => {
   const origin = getAppOrigin(req);
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientId = getGoogleClientId();
   const isConfigured = Boolean(clientId && clientId !== 'MY_GOOGLE_CLIENT_ID');
 
   res.json({
@@ -32,7 +86,8 @@ authRouter.get('/config', (req: Request, res: Response) => {
         '2. Create an "OAuth 2.0 Client ID" with Application type "Web application".',
         `3. Under "Authorized JavaScript origins", add: ${origin}`,
         `4. Under "Authorized redirect URIs", add: ${origin}/api/auth/google/callback`,
-        '5. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment or Vercel project settings.'
+        '5. If your app is in "Testing" mode, add your email to "Test users" under OAuth consent screen.',
+        '6. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment or Vercel project settings.'
       ]
     } : null
   });
@@ -73,11 +128,11 @@ authRouter.post('/register', (req: Request, res: Response) => {
 
     const { user, token } = userStore.registerUser(name, email, password);
 
-    // Set secure HttpOnly cookie
+    // Set secure cross-origin compatible cookie
     res.cookie('retailiq_session', token, {
       httpOnly: true,
-      secure: req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -111,8 +166,8 @@ authRouter.post('/login', (req: Request, res: Response) => {
 
     res.cookie('retailiq_session', token, {
       httpOnly: true,
-      secure: req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge,
       path: '/'
     });
@@ -131,9 +186,9 @@ authRouter.post('/login', (req: Request, res: Response) => {
   }
 });
 
-// GET /api/auth/google/url - Initiate Google OAuth Redirect
+// GET /api/auth/google/url - Initiate Google OAuth Redirect / Popup
 authRouter.get('/google/url', (req: Request, res: Response) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientId = getGoogleClientId();
   if (!clientId || clientId === 'MY_GOOGLE_CLIENT_ID') {
     res.status(400).json({
       success: false,
@@ -150,29 +205,78 @@ authRouter.get('/google/url', (req: Request, res: Response) => {
   const origin = getAppOrigin(req);
   const redirectUri = encodeURIComponent(`${origin}/api/auth/google/callback`);
   const scope = encodeURIComponent('openid email profile');
-  const state = Math.random().toString(36).substring(2);
+  
+  // Encode origin inside state parameter to ensure accurate callback redirection
+  const statePayload = Buffer.from(JSON.stringify({
+    nonce: Math.random().toString(36).substring(2),
+    origin: origin
+  })).toString('base64url');
 
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&access_type=offline&prompt=select_account`;
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${statePayload}&access_type=offline&prompt=select_account`;
 
   res.json({
     success: true,
-    url: authUrl
+    url: authUrl,
+    origin,
+    redirectUri: `${origin}/api/auth/google/callback`
   });
 });
 
-// GET /api/auth/google/callback - Handle Google OAuth redirect code exchange
-authRouter.get('/google/callback', async (req: Request, res: Response) => {
-  const { code, error } = req.query;
-  const origin = getAppOrigin(req);
+// GET /api/auth/google/callback - Handle Google OAuth redirect code exchange with popup postMessage
+const googleCallbackHandler = async (req: Request, res: Response) => {
+  const { code, error, error_description, state } = req.query;
+
+  // Determine origin from state parameter if present
+  let origin = getAppOrigin(req);
+  if (typeof state === 'string') {
+    try {
+      const parsed = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
+      if (parsed.origin && typeof parsed.origin === 'string' && parsed.origin.startsWith('http')) {
+        origin = parsed.origin.replace(/\/+$/, '');
+      }
+    } catch {}
+  }
 
   if (error || !code) {
-    res.redirect(`${origin}/?auth_error=${encodeURIComponent(String(error || 'Google login was cancelled.'))}`);
+    const errorMsg = String(error_description || error || 'Google sign-in was cancelled or denied.');
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>RetailIQ Authentication</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { background: #0c0c0e; color: #ececec; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+            .card { background: #18181b; border: 1px solid rgba(236,236,236,0.1); border-radius: 12px; padding: 32px 24px; max-width: 440px; }
+            h2 { font-size: 18px; margin: 0 0 12px; color: #f87171; }
+            p { font-size: 13px; color: #a1a1aa; line-height: 1.5; margin: 0 0 20px; }
+            button { background: #27272a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2>Sign In Unsuccessful</h2>
+            <p>${errorMsg}</p>
+            <button onclick="window.close()">Close Window</button>
+          </div>
+          <script>
+            const errorText = ${JSON.stringify(errorMsg)};
+            if (window.opener) {
+              window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorText }, '*');
+              setTimeout(() => window.close(), 2500);
+            } else {
+              window.location.href = ${JSON.stringify(`${origin}/?auth_error=${encodeURIComponent(errorMsg)}`)};
+            }
+          </script>
+        </body>
+      </html>
+    `);
     return;
   }
 
   try {
-    const clientId = process.env.GOOGLE_CLIENT_ID || '';
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+    const clientId = getGoogleClientId();
+    const clientSecret = getGoogleClientSecret();
     const redirectUri = `${origin}/api/auth/google/callback`;
 
     // Exchange authorization code for tokens
@@ -190,7 +294,12 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
 
     const tokenData = await tokenRes.json();
     if (!tokenRes.ok || !tokenData.access_token) {
-      throw new Error(tokenData.error_description || 'Failed to exchange authorization code with Google.');
+      const rawError = String(tokenData.error_description || tokenData.error || '');
+      let errorMsg = rawError || 'Failed to exchange authorization code with Google.';
+      if (rawError.toLowerCase().includes('client secret') || rawError.toLowerCase().includes('invalid_client')) {
+        errorMsg = `Google reported that the Client Secret is invalid for Client ID (${clientId}). When you generate a new Client ID in Google Cloud Console, a matching Client Secret is generated with it. Please update the matching Client Secret or use Google One-Tap/GIS sign-in.`;
+      }
+      throw new Error(errorMsg);
     }
 
     // Retrieve user profile from Google UserInfo endpoint
@@ -210,21 +319,90 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
       sub: profile.sub
     });
 
+    // Set secure cross-origin iframe compatible cookie
     res.cookie('retailiq_session', token, {
       httpOnly: true,
-      secure: req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/'
     });
 
-    // Redirect to dashboard with token parameter for client storage
-    res.redirect(`${origin}/?auth_token=${encodeURIComponent(token)}`);
+    // Render HTML response that notifies window.opener via postMessage and closes popup
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>RetailIQ — Authentication Successful</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { background: #0c0c0e; color: #ececec; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+            .card { background: #18181b; border: 1px solid rgba(236,236,236,0.1); border-radius: 12px; padding: 32px 24px; max-width: 380px; }
+            .badge { width: 44px; height: 44px; margin: 0 auto 16px; border-radius: 50%; background: #245c45; display: flex; align-items: center; justify-content: center; color: white; }
+            h2 { font-size: 18px; margin: 0 0 8px; font-weight: 600; }
+            p { font-size: 13px; color: #a1a1aa; margin: 0; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="badge">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h2>Signed In to RetailIQ</h2>
+            <p>Authentication complete. Returning to workspace...</p>
+          </div>
+          <script>
+            const authToken = ${JSON.stringify(token)};
+            if (window.opener) {
+              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', token: authToken }, '*');
+              window.close();
+            } else {
+              window.location.href = ${JSON.stringify(`${origin}/?auth_token=${encodeURIComponent(token)}`)};
+            }
+          </script>
+        </body>
+      </html>
+    `);
   } catch (err: any) {
     console.error('[RetailIQ Google OAuth Error]:', err);
-    res.redirect(`${origin}/?auth_error=${encodeURIComponent(err.message || 'Google authentication failed.')}`);
+    const errMsg = err.message || 'Google authentication failed.';
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>RetailIQ Authentication Error</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { background: #0c0c0e; color: #ececec; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+            .card { background: #18181b; border: 1px solid rgba(236,236,236,0.1); border-radius: 12px; padding: 32px 24px; max-width: 440px; }
+            h2 { font-size: 18px; margin: 0 0 12px; color: #f87171; }
+            p { font-size: 13px; color: #a1a1aa; line-height: 1.5; margin: 0 0 20px; }
+            button { background: #27272a; border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h2>Authentication Failed</h2>
+            <p>${errMsg}</p>
+            <button onclick="window.close()">Close Window</button>
+          </div>
+          <script>
+            const errorMsg = ${JSON.stringify(errMsg)};
+            if (window.opener) {
+              window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', error: errorMsg }, '*');
+              setTimeout(() => window.close(), 3000);
+            } else {
+              window.location.href = ${JSON.stringify(`${origin}/?auth_error=${encodeURIComponent(errMsg)}`)};
+            }
+          </script>
+        </body>
+      </html>
+    `);
   }
-});
+};
+
+authRouter.get('/google/callback', googleCallbackHandler);
+authRouter.get('/google/callback/', googleCallbackHandler);
 
 // POST /api/auth/google/credential - Google Identity Services One-Tap / Button callback
 authRouter.post('/google/credential', async (req: Request, res: Response) => {
@@ -253,8 +431,8 @@ authRouter.post('/google/credential', async (req: Request, res: Response) => {
 
     res.cookie('retailiq_session', token, {
       httpOnly: true,
-      secure: req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/'
     });
@@ -269,6 +447,31 @@ authRouter.post('/google/credential', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: err.message || 'Failed to authenticate Google credential.'
+    });
+  }
+});
+
+// POST /api/auth/google/configure-secret - Configure or update matching Google Client Secret at runtime
+authRouter.post('/google/configure-secret', (req: Request, res: Response) => {
+  try {
+    const { clientSecret } = req.body;
+    if (!clientSecret || typeof clientSecret !== 'string' || clientSecret.trim().length < 8) {
+      res.status(400).json({
+        success: false,
+        message: 'Valid Google Client Secret string is required (usually starts with GOCSPX-).'
+      });
+      return;
+    }
+
+    dynamicGoogleClientSecret = clientSecret.trim();
+    res.json({
+      success: true,
+      message: 'Google Client Secret successfully updated. You may now continue with Google.'
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to update Google Client Secret.'
     });
   }
 });

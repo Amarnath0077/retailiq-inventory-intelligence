@@ -114,10 +114,15 @@ export const TopNav: React.FC<TopNavProps> = ({
               <FileText className="w-3.5 h-3.5 text-[#C66A42]" />
               <span>Document: <strong className="font-semibold font-mono">{databaseStatus.database}</strong></span>
             </>
-          ) : (
+          ) : databaseStatus?.connected && databaseStatus.isLiveMySQL ? (
             <>
               <Database className="w-3.5 h-3.5 text-[#245C45]" />
-              <span>Store: <strong className="font-semibold font-mono">{databaseStatus?.database || 'atliq_tshirts'}</strong></span>
+              <span>MySQL: <strong className="font-semibold font-mono">{databaseStatus.database}</strong></span>
+            </>
+          ) : (
+            <>
+              <Database className="w-3.5 h-3.5 text-[#8F958F]" />
+              <span className="text-[#7F857F]">No Data Connected</span>
             </>
           )}
         </button>

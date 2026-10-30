@@ -66,9 +66,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
-  // Handle URL auth token (e.g. from Google OAuth callback redirect)
+  // Handle URL auth token (e.g. from Google OAuth callback redirect) and popup postMessage
   useEffect(() => {
     fetchAuthConfig();
+
+    // Listen for postMessage from Google OAuth popup window
+    const handleMessage = (event: MessageEvent) => {
+      // Validate message structure
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data?.token) {
+        const authToken = event.data.token;
+        localStorage.setItem('retailiq_token', authToken);
+        setToken(authToken);
+        validateSession(authToken);
+        setIsLoading(false);
+      } else if (event.data?.type === 'OAUTH_AUTH_ERROR') {
+        setError(event.data.error || 'Google authentication was not completed.');
+        setIsLoading(false);
+      }
+    };
+    window.addEventListener('message', handleMessage);
 
     const searchParams = new URLSearchParams(window.location.search);
     const urlToken = searchParams.get('auth_token');
@@ -89,6 +105,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       validateSession();
     }
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, [fetchAuthConfig, validateSession]);
 
   const login = async (email: string, password: string, rememberMe = false): Promise<{ success: boolean; error?: string }> => {
@@ -167,19 +187,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/auth/google/url');
+      const originParam = encodeURIComponent(window.location.origin);
+      const res = await fetch(`/api/auth/google/url?origin=${originParam}`);
       const data = await res.json();
 
       if (!res.ok || !data.success || !data.url) {
         if (data.error === 'google_oauth_not_configured') {
-          // Open setup instructions modal or throw informative error
           throw new Error(data.message || 'Google OAuth is not yet configured.');
         }
         throw new Error(data.message || 'Failed to start Google sign-in.');
       }
 
-      // Redirect to Google's official OAuth consent page
-      window.location.href = data.url;
+      // Per iframe security rules: Google OAuth blocks iframe embeds (resulting in 403 error).
+      // Open the Google OAuth consent flow in a dedicated popup window.
+      const width = 540;
+      const height = 660;
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+
+      const authWindow = window.open(
+        data.url,
+        'retailiq_google_oauth',
+        `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no,resizable=yes`
+      );
+
+      if (!authWindow || authWindow.closed || typeof authWindow.closed === 'undefined') {
+        setIsLoading(false);
+        throw new Error('Sign-in popup was blocked by your browser. Please allow popups for RetailIQ.');
+      }
     } catch (err: any) {
       setError(err.message || 'Unable to connect to Google authentication service.');
       setIsLoading(false);

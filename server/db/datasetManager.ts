@@ -319,6 +319,10 @@ Example: {"col_a": "brand", "col_b": "stock"}`;
     return data ? data.records : [];
   }
 
+  public clearDataset(tenantId = 'default'): void {
+    this.tenantStore.delete(tenantId);
+  }
+
   /**
    * Deterministic metrics calculation based on active filters
    */

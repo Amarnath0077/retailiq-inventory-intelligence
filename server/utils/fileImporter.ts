@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
-import { inventoryStore } from '../db/inventoryStore.ts';
+import { userInventoryStore } from '../db/userInventoryStore.ts';
 import { datasetManager } from '../db/datasetManager.ts';
+import { mysqlService } from '../db/mysqlClient.ts';
 import { GoogleGenAI, Type } from '@google/genai';
 
 export interface ImportedDatasetSummary {
@@ -19,11 +20,29 @@ export interface ImportedDatasetSummary {
   };
 }
 
+export interface ImportPreviewResult {
+  valid: boolean;
+  fileType: 'csv' | 'pdf';
+  fileName: string;
+  totalRows: number;
+  columns: string[];
+  previewRows: Record<string, any>[];
+  calculatedMetrics: {
+    totalUnits: number;
+    totalValue: number;
+    averagePrice: number;
+    sampleBrands: string[];
+  };
+  records: Record<string, any>[];
+  warnings?: string[];
+  error?: string;
+}
+
 class FileImporterManager {
   private currentSummary: ImportedDatasetSummary | null = null;
   private activeSourceType: 'mysql' | 'csv' | 'pdf' = 'mysql';
 
-  // Sample CSV datasets ready for 1-click loading
+  // Sample CSV datasets ready for 1-click loading if user explicitly chooses
   public readonly sampleDatasets = {
     ecommerce: `product_id,brand,name,category,size,price,stock_quantity,sku,rating
 1,Nike,Nike Air Pegasus 40,Footwear,10.5,130,45,NK-PEG-40,4.8
@@ -78,9 +97,43 @@ INV-105,Waterproof Breathable Windbreaker,Summit Gear,55.00,45,2475.00`
   }
 
   /**
-   * Parse CSV content and populate the inventory store & datasetManager
+   * Validate and generate preview for CSV or PDF without persisting
    */
-  public async parseAndImportCSV(csvText: string, fileName = 'imported_data.csv', tenantId = 'default'): Promise<ImportedDatasetSummary> {
+  public async validateAndPreview(fileType: 'csv' | 'pdf', content: string, fileName: string): Promise<ImportPreviewResult> {
+    if (!content || !content.trim()) {
+      return {
+        valid: false,
+        fileType,
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: 'File content is empty.'
+      };
+    }
+
+    if (fileType === 'csv') {
+      return this.previewCSV(content, fileName);
+    } else if (fileType === 'pdf') {
+      return this.previewPDF(content, fileName);
+    } else {
+      return {
+        valid: false,
+        fileType,
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: `Unsupported file type: ${fileType}. Only CSV and PDF files are supported.`
+      };
+    }
+  }
+
+  private previewCSV(csvText: string, fileName: string): ImportPreviewResult {
     const parseResult = Papa.parse<Record<string, any>>(csvText.trim(), {
       header: true,
       skipEmptyLines: true,
@@ -88,17 +141,50 @@ INV-105,Waterproof Breathable Windbreaker,Summit Gear,55.00,45,2475.00`
     });
 
     if (parseResult.errors.length > 0 && (!parseResult.data || parseResult.data.length === 0)) {
-      throw new Error(`CSV Parsing Failed: ${parseResult.errors[0].message}`);
+      return {
+        valid: false,
+        fileType: 'csv',
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: `CSV parsing error: ${parseResult.errors[0]?.message || 'Invalid CSV structure'}`
+      };
     }
 
     const rows = parseResult.data;
     if (!rows || rows.length === 0) {
-      throw new Error('CSV file contains no valid data rows.');
+      return {
+        valid: false,
+        fileType: 'csv',
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: 'CSV contains no data rows.'
+      };
     }
 
     const columns = Object.keys(rows[0] || {});
+    if (columns.length === 0) {
+      return {
+        valid: false,
+        fileType: 'csv',
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: 'CSV contains no columns or header row.'
+      };
+    }
 
-    // Check presence of columns without inventing defaults
+    // Identify standard inventory keys
     const brandKey = columns.find(c => /^(brand|supplier|vendor|manufacturer|maker)$/i.test(c)) ||
                      columns.find(c => /brand/i.test(c));
     const priceKey = columns.find(c => /^(price|unit_price|cost|amount|rate|val)$/i.test(c)) ||
@@ -111,24 +197,20 @@ INV-105,Waterproof Breathable Windbreaker,Summit Gear,55.00,45,2475.00`
     const sizeKey = columns.find(c => /^(size|sku|model|variant|code|item_code)$/i.test(c));
     const idKey = columns.find(c => /^(id|t_shirt_id|product_id|item_id)$/i.test(c));
 
-    // Push raw records to datasetManager immediately for dynamic scopes & metrics
-    await datasetManager.setDataset(tenantId, 'csv', fileName, rows, false);
-    if (tenantId !== 'default') {
-      await datasetManager.setDataset('default', 'csv', fileName, rows, false);
-    }
+    const warnings: string[] = [];
+    if (!priceKey) warnings.push('No price column detected; prices will default to $0.00.');
+    if (!qtyKey) warnings.push('No stock/quantity column detected; quantities will default to 0.');
+    if (!brandKey && !nameKey) warnings.push('No product name or brand column detected.');
 
-    // Map to inventory store for legacy table backward compatibility
     const standardizedRecords = rows.map((row, idx) => {
       const rawPrice = priceKey ? Number(row[priceKey]) : 0;
-      const price = isNaN(rawPrice) || rawPrice <= 0 ? 0 : Math.round(rawPrice * 100) / 100;
+      const price = isNaN(rawPrice) || rawPrice < 0 ? 0 : Math.round(rawPrice * 100) / 100;
 
       const rawQty = qtyKey ? Number(row[qtyKey]) : 0;
       const stock_quantity = isNaN(rawQty) || rawQty < 0 ? 0 : Math.round(rawQty);
 
-      // Preserve actual brand or leave blank if brand column is not in CSV (Never invent phantom brands!)
-      const brand = brandKey && row[brandKey] ? String(row[brandKey]).trim() : '';
-
-      const name = nameKey && row[nameKey] ? String(row[nameKey]).trim() : (brand ? `${brand} Item #${idx + 1}` : `Item #${idx + 1}`);
+      const brand = brandKey && row[brandKey] ? String(row[brandKey]).trim() : 'Unbranded';
+      const name = nameKey && row[nameKey] ? String(row[nameKey]).trim() : (brand !== 'Unbranded' ? `${brand} Item #${idx + 1}` : `Item #${idx + 1}`);
       const color = catKey && row[catKey] ? String(row[catKey]).trim() : 'Standard';
       const size = sizeKey && row[sizeKey] ? String(row[sizeKey]).trim() : 'Standard';
       const id = idKey && row[idKey] ? Number(row[idKey]) : idx + 1;
@@ -140,185 +222,251 @@ INV-105,Waterproof Breathable Windbreaker,Summit Gear,55.00,45,2475.00`
         size,
         price,
         stock_quantity,
-        name
+        name,
+        ...row
       };
     });
 
-    inventoryStore.syncFromDatabase(standardizedRecords);
+    const totalUnits = standardizedRecords.reduce((acc, r) => acc + (Number(r.stock_quantity) || 0), 0);
+    const totalValue = Math.round(standardizedRecords.reduce((acc, r) => acc + ((Number(r.price) || 0) * (Number(r.stock_quantity) || 0)), 0) * 100) / 100;
+    const averagePrice = standardizedRecords.length > 0 ? Math.round((standardizedRecords.reduce((acc, r) => acc + (Number(r.price) || 0), 0) / standardizedRecords.length) * 100) / 100 : 0;
+    const sampleBrands = Array.from(new Set(standardizedRecords.map(r => r.brand).filter(b => b && b !== 'Unbranded'))).slice(0, 5);
 
-    const totalUnits = qtyKey ? standardizedRecords.reduce((acc, r) => acc + r.stock_quantity, 0) : undefined;
-    const totalValue = (qtyKey && priceKey) ? standardizedRecords.reduce((acc, r) => acc + (r.price * r.stock_quantity), 0) : undefined;
-    const brands = brandKey ? Array.from(new Set(standardizedRecords.map(r => r.brand).filter(b => b.length > 0))) : [];
-
-    const summary: ImportedDatasetSummary = {
-      sourceType: 'csv',
+    return {
+      valid: true,
+      fileType: 'csv',
       fileName,
-      rowCount: rows.length,
+      totalRows: standardizedRecords.length,
       columns,
-      sampleRows: rows.slice(0, 5),
-      importedAt: new Date().toISOString(),
-      metadata: {
+      previewRows: standardizedRecords.slice(0, 10),
+      calculatedMetrics: {
         totalUnits,
-        totalValue: totalValue !== undefined ? Math.round(totalValue * 100) / 100 : undefined,
-        detectedBrands: brands.slice(0, 8),
-        notes: `Processed ${rows.length} rows with ${columns.length} columns (${brandKey ? 'Brand column detected' : 'No brand column - product-level scope'})`
-      }
+        totalValue,
+        averagePrice,
+        sampleBrands
+      },
+      records: standardizedRecords,
+      warnings: warnings.length > 0 ? warnings : undefined
     };
-
-    this.currentSummary = summary;
-    this.activeSourceType = 'csv';
-    return summary;
   }
 
-  /**
-   * Parse PDF Document content (using Gemini 3.8 Flash structured intelligence or text heuristic fallback)
-   */
-  public async parseAndImportPDF(pdfBase64: string, fileName = 'document.pdf', tenantId = 'default'): Promise<ImportedDatasetSummary> {
+  private async previewPDF(pdfBase64: string, fileName: string): Promise<ImportPreviewResult> {
+    const cleanBase64 = pdfBase64.replace(/^data:application\/pdf;base64,/, '');
     const apiKey = process.env.GEMINI_API_KEY;
 
-    let extractedProducts: any[] = [];
-    let detectedMetadata: any = {};
+    if (!apiKey) {
+      return {
+        valid: false,
+        fileType: 'pdf',
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: 'PDF AI extraction requires a valid GEMINI_API_KEY. Please provide a CSV file or configure the API key.'
+      };
+    }
 
-    // 1. If GEMINI_API_KEY is available, use Gemini 3.8 Flash multimodal PDF extraction
-    if (apiKey) {
-      try {
-        const ai = new GoogleGenAI({ apiKey });
-        const prompt = `You are a high-precision document extraction engine for RetailIQ.
-Analyze this attached PDF document (which may be a retail inventory report, supplier invoice, product catalog, or price sheet).
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `You are a high-precision document extraction engine for RetailIQ.
+Analyze this attached PDF document (retail inventory report, supplier invoice, product catalog, or price sheet).
 Extract all product items, inventory lines, or merchandise rows as a structured JSON object.
 
 Rules:
 1. For each item extract:
-   - "brand": string (Brand or Supplier name, e.g., 'Nike', 'Levi', 'Sony')
+   - "brand": string (Brand or Supplier name)
    - "name": string (Item name or description)
-   - "category": string (e.g., 'Apparel', 'Footwear', 'Electronics', 'Supplies')
-   - "size": string (e.g., 'S', 'M', 'L', 'XL', or SKU/Model code)
-   - "price": number (Unit price or retail price)
+   - "category": string (e.g. Apparel, Footwear, Electronics, Supplies)
+   - "size": string (e.g. S, M, L, XL or SKU code)
+   - "price": number (Unit price)
    - "stock_quantity": number (Quantity in stock, ordered, or delivered)
-   - "discount_pct": number (optional discount percentage if mentioned, default 0)
-2. If certain fields are absent, infer reasonable retail values from the context.
-3. Return at least 1 and up to 100 items found in the document.`;
+   - "discount_pct": number (optional discount percentage, default 0)
+2. Only extract actual product lines present in the document. Do not invent products that are not mentioned.
+3. Return an array of extracted products.`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: 'application/pdf',
-                    data: pdfBase64
-                  }
-                },
-                { text: prompt }
-              ]
-            }
-          ],
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                documentTitle: { type: Type.STRING },
-                totalItemsCount: { type: Type.INTEGER },
-                currency: { type: Type.STRING },
-                items: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      brand: { type: Type.STRING },
-                      name: { type: Type.STRING },
-                      category: { type: Type.STRING },
-                      size: { type: Type.STRING },
-                      price: { type: Type.NUMBER },
-                      stock_quantity: { type: Type.INTEGER },
-                      discount_pct: { type: Type.NUMBER }
-                    },
-                    required: ['brand', 'name', 'price', 'stock_quantity']
-                  }
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: cleanBase64
                 }
               },
-              required: ['items']
-            }
+              { text: prompt }
+            ]
           }
-        });
-
-        const parsed = JSON.parse(response.text || '{}');
-        if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
-          extractedProducts = parsed.items;
-          detectedMetadata = {
-            title: parsed.documentTitle || fileName,
-            currency: parsed.currency || 'USD'
-          };
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              documentTitle: { type: Type.STRING },
+              totalItemsCount: { type: Type.INTEGER },
+              items: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    brand: { type: Type.STRING },
+                    name: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    size: { type: Type.STRING },
+                    price: { type: Type.NUMBER },
+                    stock_quantity: { type: Type.INTEGER },
+                    discount_pct: { type: Type.NUMBER }
+                  },
+                  required: ['name', 'price', 'stock_quantity']
+                }
+              }
+            },
+            required: ['items']
+          }
         }
-      } catch (geminiErr: any) {
-        console.warn('[PDF Import] Gemini PDF extraction warning:', geminiErr.message);
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      if (!parsed.items || !Array.isArray(parsed.items) || parsed.items.length === 0) {
+        return {
+          valid: false,
+          fileType: 'pdf',
+          fileName,
+          totalRows: 0,
+          columns: [],
+          previewRows: [],
+          calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+          records: [],
+          error: 'Could not detect any inventory product rows in this PDF document. Please verify the document contains product listings with price and quantity, or upload a CSV file.'
+        };
+      }
+
+      const extracted = parsed.items;
+      const standardizedRecords = extracted.map((p: any, idx: number) => ({
+        t_shirt_id: idx + 1,
+        brand: p.brand || 'Catalog Product',
+        name: p.name || `Product #${idx + 1}`,
+        color: p.category || 'Standard',
+        size: p.size || 'Standard',
+        price: Math.max(0, Number(p.price) || 0),
+        stock_quantity: Math.max(0, Number(p.stock_quantity) || 0),
+        discount_pct: Number(p.discount_pct) || 0
+      }));
+
+      const totalUnits = standardizedRecords.reduce((acc: number, r: any) => acc + r.stock_quantity, 0);
+      const totalValue = Math.round(standardizedRecords.reduce((acc: number, r: any) => acc + (r.price * r.stock_quantity), 0) * 100) / 100;
+      const averagePrice = standardizedRecords.length > 0 ? Math.round((standardizedRecords.reduce((acc: number, r: any) => acc + r.price, 0) / standardizedRecords.length) * 100) / 100 : 0;
+      const sampleBrands = Array.from(new Set(standardizedRecords.map((r: any) => r.brand))).slice(0, 5) as string[];
+
+      return {
+        valid: true,
+        fileType: 'pdf',
+        fileName,
+        totalRows: standardizedRecords.length,
+        columns: ['brand', 'name', 'color', 'size', 'price', 'stock_quantity'],
+        previewRows: standardizedRecords.slice(0, 10),
+        calculatedMetrics: {
+          totalUnits,
+          totalValue,
+          averagePrice,
+          sampleBrands
+        },
+        records: standardizedRecords
+      };
+    } catch (err: any) {
+      return {
+        valid: false,
+        fileType: 'pdf',
+        fileName,
+        totalRows: 0,
+        columns: [],
+        previewRows: [],
+        calculatedMetrics: { totalUnits: 0, totalValue: 0, averagePrice: 0, sampleBrands: [] },
+        records: [],
+        error: `PDF extraction error: ${err.message || 'Failed to parse PDF document'}`
+      };
+    }
+  }
+
+  /**
+   * Commit verified records to user inventory store, datasetManager, and optionally MySQL
+   */
+  public async confirmImport(
+    userId: string,
+    fileType: 'csv' | 'pdf',
+    fileName: string,
+    records: Record<string, any>[],
+    saveToDatabase: boolean = false
+  ): Promise<{ summary: ImportedDatasetSummary; savedToDatabase: boolean; dbMessage?: string }> {
+    if (!records || records.length === 0) {
+      throw new Error('No records to import.');
+    }
+
+    // 1. Update user inventory store
+    userInventoryStore.setDataSource(
+      userId,
+      {
+        type: fileType,
+        name: fileName,
+        totalRecords: records.length,
+        isLive: false
+      },
+      records
+    );
+
+    // 2. Update dataset manager
+    await datasetManager.setDataset(userId, fileType, fileName, records, false);
+
+    // 3. Optional: Save to connected database if requested
+    let savedToDatabase = false;
+    let dbMessage = '';
+    if (saveToDatabase && mysqlService.isLive()) {
+      try {
+        const insertRes = await mysqlService.insertRecords(records, 'products');
+        savedToDatabase = insertRes.success;
+        dbMessage = insertRes.success 
+          ? `Persisted ${insertRes.insertedCount} records to connected MySQL "products" table.`
+          : `Database insertion warning: ${insertRes.message}`;
+      } catch (dbErr: any) {
+        dbMessage = `Could not save to MySQL: ${dbErr.message}`;
       }
     }
 
-    // 2. Fallback heuristic if Gemini could not process or returned empty
-    if (!extractedProducts || extractedProducts.length === 0) {
-      extractedProducts = [
-        { brand: 'Nike', name: 'Performance Track Jacket', category: 'Apparel', size: 'L', price: 65, stock_quantity: 40 },
-        { brand: 'Levi', name: 'Slim Fit Denim 511', category: 'Apparel', size: '32x30', price: 72, stock_quantity: 55 },
-        { brand: 'Sony', name: 'Studio Monitor Over-Ear', category: 'Electronics', size: 'Black', price: 149, stock_quantity: 25 },
-        { brand: 'Bose', name: 'SoundLink Flex Bluetooth', category: 'Electronics', size: 'Blue', price: 129, stock_quantity: 30 },
-        { brand: 'Adidas', name: 'Adicolor Classics Tee', category: 'Apparel', size: 'M', price: 30, stock_quantity: 75 }
-      ];
-      detectedMetadata = {
-        title: fileName,
-        currency: 'USD',
-        note: 'Extracted using RetailIQ PDF Schema Parser'
-      };
-    }
-
-    // Format records for inventoryStore
-    const standardizedRecords = extractedProducts.map((p, idx) => ({
-      t_shirt_id: idx + 1,
-      brand: p.brand || 'Catalog Product',
-      color: p.category || 'Standard',
-      size: p.size || 'M',
-      price: Number(p.price) || 25,
-      stock_quantity: Number(p.stock_quantity) || 10,
-      name: p.name || `Item ${idx + 1}`
-    }));
-
-    // Update datasetManager and inventoryStore
-    await datasetManager.setDataset(tenantId, 'pdf', fileName, extractedProducts, false);
-    if (tenantId !== 'default') {
-      await datasetManager.setDataset('default', 'pdf', fileName, extractedProducts, false);
-    }
-    inventoryStore.syncFromDatabase(standardizedRecords);
-
-    const totalUnits = standardizedRecords.reduce((acc, r) => acc + r.stock_quantity, 0);
-    const totalValue = standardizedRecords.reduce((acc, r) => acc + (r.price * r.stock_quantity), 0);
-    const brands = Array.from(new Set(standardizedRecords.map(r => r.brand)));
+    const columns = Object.keys(records[0] || {});
+    const totalUnits = records.reduce((acc, r) => acc + (Number(r.stock_quantity) || 0), 0);
+    const totalValue = Math.round(records.reduce((acc, r) => acc + ((Number(r.price) || 0) * (Number(r.stock_quantity) || 0)), 0) * 100) / 100;
+    const brands = Array.from(new Set(records.map(r => r.brand).filter(Boolean)));
 
     const summary: ImportedDatasetSummary = {
-      sourceType: 'pdf',
+      sourceType: fileType,
       fileName,
-      rowCount: standardizedRecords.length,
-      columns: ['brand', 'name', 'category', 'size', 'price', 'stock_quantity'],
-      sampleRows: extractedProducts.slice(0, 5),
+      rowCount: records.length,
+      columns,
+      sampleRows: records.slice(0, 5),
       importedAt: new Date().toISOString(),
       metadata: {
         totalUnits,
-        totalValue: Math.round(totalValue * 100) / 100,
-        detectedBrands: brands.slice(0, 6),
-        notes: `Extracted ${standardizedRecords.length} structured product rows from PDF (${fileName})`
+        totalValue,
+        detectedBrands: brands.slice(0, 6) as string[],
+        notes: `Imported ${records.length} records from ${fileName}`
       }
     };
 
     this.currentSummary = summary;
-    this.activeSourceType = 'pdf';
-    return summary;
+    this.activeSourceType = fileType;
+
+    return {
+      summary,
+      savedToDatabase,
+      dbMessage
+    };
   }
 
-  /**
-   * Reset data source back to MySQL Database
-   */
   public resetToMySQL(): void {
     this.activeSourceType = 'mysql';
     this.currentSummary = null;

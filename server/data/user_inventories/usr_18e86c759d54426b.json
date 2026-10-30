@@ -1,0 +1,37 @@
+{
+  "userId": "usr_18e86c759d54426b",
+  "dataSource": {
+    "type": "csv",
+    "name": "summer_footwear.csv",
+    "totalRecords": 2,
+    "isLive": false,
+    "connectedAt": "2026-10-30T10:00:22.486Z"
+  },
+  "records": [
+    {
+      "t_shirt_id": 1,
+      "brand": "Nike",
+      "color": "Footwear",
+      "size": 10,
+      "price": 120,
+      "stock_quantity": 50,
+      "name": "Nike Air Zoom",
+      "sku": "NK-01",
+      "category": "Footwear"
+    },
+    {
+      "t_shirt_id": 2,
+      "brand": "Adidas",
+      "color": "Footwear",
+      "size": 9.5,
+      "price": 160,
+      "stock_quantity": 25,
+      "name": "Ultraboost",
+      "sku": "AD-01",
+      "category": "Footwear"
+    }
+  ],
+  "discounts": [],
+  "lowStockThreshold": 15,
+  "lastUpdated": "2026-10-30T10:00:22.486Z"
+}

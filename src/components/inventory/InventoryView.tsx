@@ -394,7 +394,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ lowStockThreshold 
               Retry
             </button>
           </div>
-        ) : !productsData || productsData.products.length === 0 ? (
+        ) : !productsData || productsData.total === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-10 h-10 rounded bg-[#F7F6F0] text-[#7A807A] flex items-center justify-center mx-auto mb-2.5">
+              <PackageSearch className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-[#252B28] mb-0.5">No inventory data available</h3>
+            <p className="text-xs text-[#6F756F] mb-3 max-w-sm mx-auto">
+              No inventory data available. Connect your database or import a CSV/PDF file to get started.
+            </p>
+          </div>
+        ) : productsData.products.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-10 h-10 rounded bg-[#F7F6F0] text-[#7A807A] flex items-center justify-center mx-auto mb-2.5">
               <PackageSearch className="w-5 h-5" />

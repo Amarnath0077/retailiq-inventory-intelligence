@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Lock, 
   Mail, 
@@ -27,7 +27,7 @@ export const AuthPage: React.FC = () => {
   const { 
     login, 
     register, 
-    loginWithGoogle, 
+    submitGoogleCredential,
     requestPasswordReset, 
     confirmPasswordReset,
     authConfig,
@@ -64,6 +64,94 @@ export const AuthPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showGoogleSetupModal, setShowGoogleSetupModal] = useState(false);
   const [copiedCallback, setCopiedCallback] = useState(false);
+
+  // Google Client Secret Pairing State
+  const [clientSecretInput, setClientSecretInput] = useState('');
+  const [isUpdatingSecret, setIsUpdatingSecret] = useState(false);
+  const [secretFeedback, setSecretFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Initialize Google Identity Services (GIS) for zero-secret client-side login
+  useEffect(() => {
+    if (!authConfig?.clientId) return;
+
+    let timer: any = null;
+
+    const initGIS = () => {
+      try {
+        const gsi = (window as any).google?.accounts?.id;
+        if (!gsi) return false;
+
+        gsi.initialize({
+          client_id: authConfig.clientId,
+          callback: async (resp: any) => {
+            if (resp?.credential) {
+              setIsSubmitting(true);
+              setFormError(null);
+              const result = await submitGoogleCredential(resp.credential);
+              setIsSubmitting(false);
+              if (!result.success) {
+                setFormError(result.error || 'Google sign-in could not be completed.');
+              }
+            }
+          },
+          auto_select: false,
+          cancel_on_tap_outside: true
+        });
+
+        const container = document.getElementById('gsi-btn-wrapper');
+        if (container) {
+          container.innerHTML = '';
+          gsi.renderButton(container, {
+            theme: 'filled_black',
+            size: 'large',
+            width: 360,
+            text: 'continue_with',
+            shape: 'rectangular',
+            logo_alignment: 'left'
+          });
+        }
+        return true;
+      } catch (err) {
+        return false;
+      }
+    };
+
+    if (!initGIS()) {
+      timer = setInterval(() => {
+        if (initGIS()) clearInterval(timer);
+      }, 350);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [authConfig?.clientId, submitGoogleCredential, mode]);
+
+  const handleUpdateClientSecret = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientSecretInput.trim()) return;
+
+    setIsUpdatingSecret(true);
+    setSecretFeedback(null);
+    try {
+      const res = await fetch('/api/auth/google/configure-secret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientSecret: clientSecretInput.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSecretFeedback({ type: 'success', message: data.message });
+        setClientSecretInput('');
+      } else {
+        setSecretFeedback({ type: 'error', message: data.message || 'Could not update secret.' });
+      }
+    } catch (err: any) {
+      setSecretFeedback({ type: 'error', message: err.message || 'Error updating secret.' });
+    } finally {
+      setIsUpdatingSecret(false);
+    }
+  };
 
   // Clear errors on mode switch
   const switchMode = (newMode: AuthViewMode) => {
@@ -129,21 +217,7 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  const handleGoogleClick = async () => {
-    setFormError(null);
-    if (!authConfig?.googleConfigured) {
-      setShowGoogleSetupModal(true);
-      return;
-    }
 
-    try {
-      setIsSubmitting(true);
-      await loginWithGoogle();
-    } catch (err: any) {
-      setIsSubmitting(false);
-      setFormError(err.message || 'Could not connect to Google authentication.');
-    }
-  };
 
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -380,9 +454,22 @@ export const AuthPage: React.FC = () => {
 
           {/* Feedback & Error Alerts */}
           {(formError || globalError) && (
-            <div className="mb-4 p-3.5 rounded-xl bg-rose-950/50 border border-rose-800/80 text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">{formError || globalError}</div>
+            <div className="mb-4 p-3.5 rounded-xl bg-rose-950/50 border border-rose-800/80 text-rose-200 text-xs flex flex-col gap-2 animate-in fade-in">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">{formError || globalError}</div>
+              </div>
+              {(String(formError || globalError).toLowerCase().includes('google') ||
+                String(formError || globalError).toLowerCase().includes('403') ||
+                String(formError || globalError).toLowerCase().includes('popup')) && (
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleSetupModal(true)}
+                  className="self-start text-[11px] font-semibold text-teal-300 hover:text-teal-200 underline underline-offset-2 ml-6 cursor-pointer"
+                >
+                  View Google OAuth &amp; 403 Troubleshooting Guide →
+                </button>
+              )}
             </div>
           )}
 
@@ -413,36 +500,16 @@ export const AuthPage: React.FC = () => {
             </div>
           )}
 
-          {/* ================= OPTION A: CONTINUE WITH GOOGLE ================= */}
+          {/* ================= OPTION A: CONTINUE WITH GOOGLE (OFFICIAL GOOGLE IFRAME) ================= */}
           {(mode === 'login' || mode === 'register') && (
             <div className="space-y-4">
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleGoogleClick}
-                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-200 text-xs font-semibold rounded-xl transition-all shadow-sm active:scale-[0.99] disabled:opacity-50 cursor-pointer"
-              >
-                {/* Official Google G Logo */}
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path
-                    fill="#4285F4"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                  />
-                  <path
-                    fill="#EA4335"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                  />
-                </svg>
-                <span>Continue with Google</span>
-              </button>
+              {/* Official Google Identity Services iframe button */}
+              <div className="w-full flex justify-center py-1">
+                <div
+                  id="gsi-btn-wrapper"
+                  className="flex justify-center min-h-[44px] overflow-hidden rounded-xl w-full"
+                />
+              </div>
 
               {/* Divider */}
               <div className="relative flex items-center justify-center">
@@ -865,6 +932,42 @@ export const AuthPage: React.FC = () => {
                 <p className="text-slate-300">
                   Set <code className="text-teal-300 font-mono">GOOGLE_CLIENT_ID</code> and <code className="text-teal-300 font-mono">GOOGLE_CLIENT_SECRET</code> in your Vercel or deployment environment.
                 </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-amber-200 text-[11px] space-y-1">
+                <div className="font-semibold text-amber-300">4. Fixing "403 / Access Blocked" Error:</div>
+                <p className="text-slate-300 leading-relaxed">
+                  If Google shows <span className="text-amber-300 font-mono">Error 403: access_denied</span>: In Google Cloud Console under <strong>OAuth consent screen &gt; Test users</strong>, click <strong>+ ADD USERS</strong> and add your Google email address, or click <strong>Publish App</strong>.
+                </p>
+              </div>
+
+              {/* 5. Runtime Client Secret Pairing */}
+              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                <div className="text-[10px] text-slate-300 uppercase font-semibold">5. Pair Client Secret for Current Client ID:</div>
+                <p className="text-slate-400 text-[11px] leading-relaxed">
+                  If you see <span className="text-rose-300 font-mono">client secret is invalid</span>, enter the Client Secret generated with Client ID <span className="text-teal-300 font-mono">966798520485-...</span>:
+                </p>
+                <form onSubmit={handleUpdateClientSecret} className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder="GOCSPX-..."
+                    value={clientSecretInput}
+                    onChange={(e) => setClientSecretInput(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 font-mono focus:outline-hidden focus:border-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isUpdatingSecret || !clientSecretInput.trim()}
+                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    {isUpdatingSecret ? 'Saving...' : 'Save Secret'}
+                  </button>
+                </form>
+                {secretFeedback && (
+                  <div className={`text-[11px] ${secretFeedback.type === 'success' ? 'text-teal-400' : 'text-rose-400'}`}>
+                    {secretFeedback.message}
+                  </div>
+                )}
               </div>
             </div>
 

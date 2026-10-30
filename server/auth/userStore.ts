@@ -6,7 +6,9 @@ import { User, UserRecord, Session } from './types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../data');
+// In serverless environments (Vercel / Lambda), use /tmp where writes are permitted
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isServerless ? '/tmp/retailiq_data' : path.resolve(__dirname, '../data');
 const USERS_FILE = path.resolve(DATA_DIR, 'users.json');
 const SESSIONS_FILE = path.resolve(DATA_DIR, 'sessions.json');
 const SECRET_FILE = path.resolve(DATA_DIR, 'auth_secret.key');
@@ -26,8 +28,12 @@ class UserStore {
   }
 
   private ensureDataDir() {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+    } catch {
+      // In read-only filesystems, proceed gracefully with in-memory persistence
     }
   }
 

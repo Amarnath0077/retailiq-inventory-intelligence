@@ -25,7 +25,7 @@ interface AssistantViewProps {
   initialQuery?: string;
 }
 
-export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold, databaseName = 'atliq_tshirts', initialQuery }) => {
+export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold, databaseName = 'Connected Data', initialQuery }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputQuery, setInputQuery] = useState(initialQuery || '');
   const [isSubmitting, setIsSubmitting] = useState(false);

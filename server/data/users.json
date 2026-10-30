@@ -7,7 +7,7 @@
     "emailVerified": true,
     "provider": "local",
     "createdAt": "2026-10-29T11:01:50.492Z",
-    "lastLoginAt": "2026-10-29T11:04:07.627Z",
+    "lastLoginAt": "2026-10-30T09:41:56.372Z",
     "passwordHash": "8a8a373aaa4b22e056961d97cdb77a92a5df46f6d32dfcdf3ee6534e538fd68e1550e1fcb44212e315059beebd1d4330609683b5b53323af36a1d208196ecf66",
     "passwordSalt": "60007af1635fe10ab3d86aab7acb48d9"
   },
@@ -22,5 +22,29 @@
     "lastLoginAt": "2026-10-29T11:02:56.887Z",
     "passwordHash": "91f6ae37c7aefa2936e5464658bcb4676ec0ac99cdc13fdabac22a0eb05488e3194b7de0381803a4c7bc2c7c425c09ddc336278e10c5da31a316c2e55350d8bf",
     "passwordSalt": "ac4e4214c66b6fb34da9c174c4a21754"
+  },
+  {
+    "id": "usr_bab70a9e1c5a4da7",
+    "email": "alex@example.com",
+    "name": "Alex Store",
+    "role": "inventory_manager",
+    "emailVerified": true,
+    "provider": "local",
+    "createdAt": "2026-10-30T09:59:29.490Z",
+    "lastLoginAt": "2026-10-30T09:59:29.490Z",
+    "passwordHash": "1159529a554dce10d902bf678c9f612fd32208b7c7bd530339d4ba940e10bd727ccffb8fe9ff00ea03dd2f8c820c1172609010a7be66c054ae93d06167bb93de",
+    "passwordSalt": "b7a8641f28d438b638e01b21452d9ede"
+  },
+  {
+    "id": "usr_18e86c759d54426b",
+    "email": "samantha_1793354422442@retail.com",
+    "name": "Samantha Merchant",
+    "role": "inventory_manager",
+    "emailVerified": true,
+    "provider": "local",
+    "createdAt": "2026-10-30T10:00:22.467Z",
+    "lastLoginAt": "2026-10-30T10:00:22.467Z",
+    "passwordHash": "06150ba7b00d2a2ebdee345d0deef0d99ffe3a773134ff2de33086cfb624b3500c780d4bc1cf6804d6cce6499729252e068df8b65bc120221ace3432b67b8228",
+    "passwordSalt": "2cef7dd401a5909452ffe7937f8d0c82"
   }
 ]

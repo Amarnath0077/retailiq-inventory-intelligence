@@ -142,11 +142,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Database className="w-3.5 h-3.5 text-[#8E9F94] shrink-0" />
             )}
             <span className="font-mono text-[11px] text-white truncate">
-              {databaseStatus?.database || 'atliq_tshirts'}
+              {databaseStatus?.connected ? (databaseStatus?.database || 'Connected Data') : 'No Data Connected'}
             </span>
           </div>
           <span className="text-[10px] font-mono font-medium text-[#BAC8BF] bg-[#222E27] px-1.5 py-0.5 rounded">
-            {databaseStatus?.isLiveMySQL ? 'LIVE' : 'LEDGER'}
+            {databaseStatus?.connected ? (databaseStatus?.isLiveMySQL ? 'LIVE' : 'LOADED') : 'STANDBY'}
           </span>
         </div>
         <div className="text-[10px] text-[#7E9085] flex items-center justify-between">
