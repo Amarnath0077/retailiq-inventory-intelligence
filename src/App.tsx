@@ -138,7 +138,7 @@ function AuthenticatedApp() {
 
   // State 3: Authenticated User -> Render Protected Retail Ledger Dashboard
   return (
-    <div className="min-h-screen bg-[#F7F6F0] flex text-[#252B28] font-sans antialiased">
+    <div className="min-h-screen bg-[#F8FAFC] flex text-slate-800 font-sans antialiased">
       {/* Dark Sidebar */}
       <Sidebar
         currentTab={currentTab}

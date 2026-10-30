@@ -46,5 +46,17 @@
     "lastLoginAt": "2026-10-30T10:00:22.467Z",
     "passwordHash": "06150ba7b00d2a2ebdee345d0deef0d99ffe3a773134ff2de33086cfb624b3500c780d4bc1cf6804d6cce6499729252e068df8b65bc120221ace3432b67b8228",
     "passwordSalt": "2cef7dd401a5909452ffe7937f8d0c82"
+  },
+  {
+    "id": "usr_14012d12f35f1c16",
+    "email": "testquery@example.com",
+    "name": "Test User",
+    "role": "inventory_manager",
+    "emailVerified": true,
+    "provider": "local",
+    "createdAt": "2026-10-30T10:27:04.732Z",
+    "lastLoginAt": "2026-10-30T10:27:09.403Z",
+    "passwordHash": "7b621b0fab40459172e326f5bd2fc7f7628b8ffcd770ae05923f6f6bc50d6536d8672f5a02a849b4a0babdca007a5aac2393e0a49553f5f7814bb26b86b7bf3d",
+    "passwordSalt": "f65634142748ace6288a70fa2827992d"
   }
 ]

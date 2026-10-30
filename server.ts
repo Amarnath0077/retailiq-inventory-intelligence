@@ -606,11 +606,13 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       query,
       currentSettings.lowStockThreshold,
       currentSettings.queryRoutingMode,
-      Boolean(searchGrounding)
+      Boolean(searchGrounding),
+      tenantId
     );
 
     res.json(response);
   } catch (err: any) {
+    console.error('[API Chat Error]:', err?.message);
     res.status(500).json({
       error: err.message || 'Failed to process inventory query',
       queryType: 'error'
@@ -621,6 +623,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 // API: Dedicated Google Search Grounding with gemini-3.8-flash
 app.post('/api/search-grounding', requireAuth, async (req, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { query } = req.body;
     if (!query || typeof query !== 'string' || !query.trim()) {
       res.status(400).json({ error: 'Query is required for Google Search Grounding.' });
@@ -629,12 +632,14 @@ app.post('/api/search-grounding', requireAuth, async (req, res) => {
 
     const response = await queryEngine.executeSearchGrounding(
       query,
-      await mysqlService.inspectSchema(),
-      currentSettings.lowStockThreshold
+      undefined,
+      currentSettings.lowStockThreshold,
+      tenantId
     );
 
     res.json(response);
   } catch (err: any) {
+    console.error('[API Grounding Error]:', err?.message);
     res.status(500).json({
       error: err.message || 'Google Search Grounding failed',
       queryType: 'google_search_grounding'

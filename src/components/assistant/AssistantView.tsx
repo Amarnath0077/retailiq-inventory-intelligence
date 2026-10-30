@@ -14,7 +14,11 @@ import {
   BarChart3, 
   Globe, 
   ExternalLink, 
-  Search
+  Search,
+  MessageSquare,
+  Zap,
+  Terminal,
+  Cpu
 } from 'lucide-react';
 import { ChatMessage } from '../../types/inventory.ts';
 import { apiFetch } from '../../utils/api.ts';
@@ -25,7 +29,11 @@ interface AssistantViewProps {
   initialQuery?: string;
 }
 
-export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold, databaseName = 'Connected Data', initialQuery }) => {
+export const AssistantView: React.FC<AssistantViewProps> = ({ 
+  lowStockThreshold, 
+  databaseName = 'Connected Data', 
+  initialQuery 
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputQuery, setInputQuery] = useState(initialQuery || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -65,43 +73,51 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
     {
       title: "Find 5 Cheapest Products",
       query: "Find the 5 cheapest products",
-      tag: "Lowest Price SKUs"
+      tag: "Price Analysis",
+      color: "border-indigo-200 text-indigo-700 bg-indigo-50"
     },
     {
       title: "Low Stock Alert (Units ≤ 10)",
       query: "Show products with stock below 10",
-      tag: "Stock Replenishment"
+      tag: "Restocking",
+      color: "border-amber-200 text-amber-700 bg-amber-50"
     },
     {
       title: "Inventory Value by Brand",
       query: "Calculate inventory value by brand",
-      tag: "Brand Valuation"
+      tag: "Valuation",
+      color: "border-emerald-200 text-emerald-700 bg-emerald-50"
     },
     {
-      title: "Compare Monthly Orders & Sales",
-      query: "Compare monthly sales",
-      tag: "Revenue Performance"
+      title: "Stock Distribution Overview",
+      query: "Show inventory distribution by category",
+      tag: "Distribution",
+      color: "border-purple-200 text-purple-700 bg-purple-50"
     }
   ] : [
     {
-      title: "Find 5 Cheapest Shirts",
-      query: "Find the 5 cheapest shirts",
-      tag: "Lowest Price SKUs"
+      title: "Find 5 Cheapest Products",
+      query: "Find the 5 cheapest products",
+      tag: "Price Analysis",
+      color: "border-indigo-200 text-indigo-700 bg-indigo-50"
     },
     {
       title: "Low Stock Alert (Units ≤ 10)",
       query: "Show products with stock below 10",
-      tag: "Stock Replenishment"
+      tag: "Restocking",
+      color: "border-amber-200 text-amber-700 bg-amber-50"
     },
     {
       title: "Inventory Value by Brand",
       query: "Calculate inventory value by brand",
-      tag: "Valuation Breakdown"
+      tag: "Valuation",
+      color: "border-emerald-200 text-emerald-700 bg-emerald-50"
     },
     {
       title: "Which Brand Has Lowest Stock?",
       query: "Which brand has the lowest stock?",
-      tag: "Brand Stock Analysis"
+      tag: "Analysis",
+      color: "border-cyan-200 text-cyan-700 bg-cyan-50"
     }
   ]);
 
@@ -109,98 +125,26 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
     {
       title: "Nike Dri-FIT Market Pricing",
       query: "Search Google for current retail market price benchmarks for Nike Dri-FIT t-shirts across major retailers",
-      tag: "Google Search Grounded"
+      tag: "Web Grounding"
     },
     {
       title: "2026 Trending Apparel Colors",
       query: "Search Google for 2026 trending athletic apparel colors and consumer retail demand shifts",
-      tag: "Market Trends"
+      tag: "Market Intel"
     },
     {
       title: "Levi's T-Shirt Market Pricing",
-      query: "What is the average retail price benchmark for Levi's crew neck and graphic t-shirts across online retailers?",
+      query: "Search Google for current commercial retail price range for Levi's graphic tees",
       tag: "Competitor Intel"
-    },
-    {
-      title: "Sony vs Bose Street Prices",
-      query: "What are the latest street retail prices and discounts for Sony WH-1000XM5 and Bose QuietComfort headphones?",
-      tag: "Market Benchmark"
     }
   ];
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isSubmitting]);
 
-  const handleSend = async (queryText?: string, forceSearchGrounding?: boolean) => {
-    const textToSend = (queryText || inputQuery).trim();
-    if (!textToSend || isSubmitting) return;
-
-    const activeGrounding = forceSearchGrounding !== undefined ? forceSearchGrounding : useSearchGrounding;
-
-    const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}-user`,
-      sender: 'user',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      text: textToSend
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputQuery('');
-    setIsSubmitting(true);
-
-    try {
-      const response = await apiFetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query: textToSend,
-          searchGrounding: activeGrounding
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Query router returned an error.');
-      }
-
-      const result = await response.json();
-
-      const assistantMessage: ChatMessage = {
-        id: `msg-${Date.now()}-assistant`,
-        sender: 'assistant',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: result.answer,
-        metric: result.metric,
-        sqlQuery: result.sqlQuery,
-        tableData: result.tableData,
-        chartData: result.chartData,
-        queryType: result.queryType,
-        groundingMetadata: result.groundingMetadata,
-        isError: false
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (err: any) {
-      const errorMessage: ChatMessage = {
-        id: `msg-${Date.now()}-err`,
-        sender: 'assistant',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        text: `Unable to process query: ${err.message || 'Server connection error'}.`,
-        isError: true
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsSubmitting(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  };
-
   const toggleSqlExpand = (id: string) => {
-    setExpandedSqlIds(prev => {
+    setExpandedSqlIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -214,136 +158,213 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
     setTimeout(() => setCopiedSqlId(null), 2000);
   };
 
-  const handleClearChat = () => {
+  const handleSend = async (queryText?: string) => {
+    const textToSend = queryText || inputQuery;
+    if (!textToSend.trim() || isSubmitting) return;
+
+    const userMsg: ChatMessage = {
+      id: `usr-${Date.now()}`,
+      sender: 'user',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: textToSend.trim()
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setInputQuery('');
+    setIsSubmitting(true);
+
+    try {
+      const endpoint = useSearchGrounding ? '/api/search-grounding' : '/api/chat';
+      const res = await apiFetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: textToSend.trim(),
+          searchGrounding: useSearchGrounding 
+        })
+      });
+
+      if (!res.ok) {
+        let errorText = `Server returned HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) {
+            errorText = errData.error;
+          }
+        } catch (_) {}
+        throw new Error(errorText);
+      }
+
+      const data = await res.json();
+
+      let formattedTableData = undefined;
+      if (data.tableData && Array.isArray(data.tableData.rows) && data.tableData.rows.length > 0) {
+        formattedTableData = data.tableData;
+      } else if (data.rows && Array.isArray(data.rows) && data.rows.length > 0 && data.columns) {
+        formattedTableData = {
+          columns: data.columns,
+          rows: data.rows
+        };
+      }
+
+      let metricData = undefined;
+      if (data.metric && typeof data.metric === 'object') {
+        metricData = data.metric;
+      } else if (data.metric !== undefined) {
+        metricData = {
+          label: data.metricLabel || 'Calculated Metric',
+          value: typeof data.metric === 'number' && !Number.isInteger(data.metric)
+            ? `$${data.metric.toFixed(2)}`
+            : String(data.metric),
+          subtext: data.metricSubtext
+        };
+      }
+
+      const assistantMsg: ChatMessage = {
+        id: `ast-${Date.now()}`,
+        sender: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: data.answer || data.summary || 'I analyzed your request and computed the inventory ledger results below.',
+        sqlQuery: data.sqlQuery || undefined,
+        queryType: data.queryType || (useSearchGrounding ? 'google_search_grounding' : 'exact_pattern'),
+        metric: metricData,
+        tableData: formattedTableData,
+        chartData: data.chartData,
+        groundingMetadata: data.groundingMetadata
+      };
+
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (err: any) {
+      const errorMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        sender: 'assistant',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        text: `Query processing notice: ${err.message || 'Could not execute search. Please verify input or connect database.'}`,
+        isError: true
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClearHistory = () => {
     setMessages([]);
-    setExpandedSqlIds(new Set());
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] max-w-5xl mx-auto p-4 md:p-6 text-[#252B28]">
+    <div className="p-4 md:p-8 space-y-5 max-w-5xl mx-auto flex flex-col h-[calc(100vh-4rem)] text-slate-800">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-[#E4E5DC] shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-[#252B28]">
-              Retail Assistant
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-purple-500/20">
+              <Bot className="w-4 h-4 text-white" />
+            </div>
+            <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight">
+              Retail Intelligence Assistant
             </h1>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-[#E8EFEA] text-[#245C45] border border-[#CCDACC]">
-              <Sparkles className="w-3 h-3 text-[#245C45]" />
-              <span>Grounded Schema Engine</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-purple-600 animate-pulse" />
+              <span>Gemini 3.8 Flash</span>
             </span>
           </div>
-          <p className="text-xs text-[#6F756F] mt-0.5">
-            Query inventory quantities, brand valuations, low-stock risks, and real-time market retail benchmarks.
+          <p className="text-xs text-slate-500 mt-1">
+            Natural-language NL-to-SQL synthesizer, Google Search market grounding, and merchandising analytics.
           </p>
         </div>
 
         {messages.length > 0 && (
           <button
-            onClick={handleClearChat}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#555C56] hover:text-[#252B28] bg-white border border-[#E4E5DC] hover:bg-[#F7F6F0] rounded-md transition-colors cursor-pointer"
+            onClick={handleClearHistory}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer self-start sm:self-auto"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-[#7A807A]" />
-            <span>Clear History</span>
+            <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+            <span>Clear Chat</span>
           </button>
         )}
       </div>
 
-      {/* Messages Viewport */}
-      <div className="flex-1 overflow-y-auto py-5 space-y-5">
+      {/* Main Conversation Stream */}
+      <div className="flex-1 overflow-y-auto space-y-4 pr-1">
         {messages.length === 0 ? (
-          /* Welcoming Panel / Suggested Prompts */
-          <div className="max-w-3xl mx-auto py-4 space-y-6">
-            <div className="text-center space-y-1.5">
-              <div className="w-10 h-10 rounded-md bg-[#E8EFEA] text-[#245C45] flex items-center justify-center mx-auto border border-[#CCDACC]">
-                <Bot className="w-5 h-5" />
+          /* Empty Assistant State with Suggestion Cards */
+          <div className="py-6 space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-200/90 p-6 md:p-8 text-center shadow-xs">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-cyan-500 text-white flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/20">
+                <Sparkles className="w-7 h-7" />
               </div>
-              <h2 className="text-base font-bold text-[#252B28]">
-                Retail Intelligence & Inventory Planning Assistant
+              <h2 className="text-lg md:text-xl font-extrabold text-slate-900 mb-2">
+                Ask anything about your retail inventory
               </h2>
-              <p className="text-xs text-[#6F756F] max-w-md mx-auto leading-relaxed">
-                Execute natural-language merchandise queries, inspect generated read-only SQL, and cross-reference live market benchmarks.
+              <p className="text-xs md:text-sm text-slate-500 max-w-xl mx-auto leading-relaxed">
+                Query current stock levels, low-stock risk, catalog valuation, brand comparisons, or market price benchmarks using natural language.
               </p>
             </div>
 
-            <div>
-              <div className="text-[11px] font-semibold text-[#6F756F] uppercase tracking-wider mb-2.5 px-1 flex items-center justify-between">
-                <span>Database Inventory Inquiries</span>
-                <span className="text-[10px] text-[#7A807A] font-mono">Store: {databaseName}</span>
+            {/* Suggested Question Cards */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 px-1">
+                <Terminal className="w-4 h-4 text-indigo-600" />
+                <span>Deterministic Catalog Queries:</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {suggestedQuestions.map((q, idx) => (
                   <button
                     key={idx}
-                    onClick={() => handleSend(q.query, false)}
-                    className="p-3 text-left bg-white rounded-md border border-[#E4E5DC] hover:border-[#245C45] transition-colors group flex flex-col justify-between cursor-pointer"
+                    onClick={() => handleSend(q.query)}
+                    className="p-4 bg-white rounded-xl border border-slate-200 hover:border-indigo-400 hover:shadow-md hover:shadow-indigo-500/5 transition-all text-left flex flex-col justify-between group cursor-pointer"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[11px] font-semibold text-[#245C45]">
-                          {q.title}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#F7F6F0] text-[#6F756F] font-mono border border-[#E4E5DC]">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                           {q.tag}
                         </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-indigo-600 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                       </div>
-                      <p className="text-xs text-[#252B28] leading-snug">
+                      <h3 className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                        {q.title}
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-1 line-clamp-1 font-mono">
                         "{q.query}"
                       </p>
-                    </div>
-                    <div className="mt-2.5 flex items-center gap-1 text-[11px] font-medium text-[#7A807A] group-hover:text-[#245C45]">
-                      <span>Run Query</span>
-                      <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                     </div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Google Search Grounding Section */}
-            <div>
-              <div className="text-[11px] font-semibold text-[#C66A42] uppercase tracking-wider mb-2.5 px-1 flex items-center gap-1.5">
-                <Globe className="w-3.5 h-3.5" />
-                <span>Market Retail Benchmarks (Google Search Grounding)</span>
+            {/* Google Search Grounding Inquiries */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 px-1">
+                <Globe className="w-4 h-4 text-cyan-600" />
+                <span>Real-Time Web Grounded Intelligence:</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {searchGroundingQuestions.map((q, idx) => (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {searchGroundingQuestions.map((sq, idx) => (
                   <button
                     key={idx}
-                    onClick={() => handleSend(q.query, true)}
-                    className="p-3 text-left bg-white rounded-md border border-[#E4E5DC] hover:border-[#C66A42] transition-colors group flex flex-col justify-between cursor-pointer"
+                    onClick={() => {
+                      setUseSearchGrounding(true);
+                      handleSend(sq.query);
+                    }}
+                    className="p-3.5 bg-gradient-to-br from-cyan-50/50 via-white to-white rounded-xl border border-cyan-100 hover:border-cyan-400 hover:shadow-sm transition-all text-left flex flex-col justify-between group cursor-pointer"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[11px] font-semibold text-[#C66A42] flex items-center gap-1">
-                          <Globe className="w-3 h-3" />
-                          <span>{q.title}</span>
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#FDF3EC] text-[#C66A42] font-mono border border-[#F2D7C7]">
-                          {q.tag}
-                        </span>
-                      </div>
-                      <p className="text-xs text-[#252B28] leading-snug">
-                        "{q.query}"
-                      </p>
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 mb-2 inline-block">
+                        {sq.tag}
+                      </span>
+                      <h3 className="text-xs font-bold text-slate-800 group-hover:text-cyan-700 transition-colors">
+                        {sq.title}
+                      </h3>
                     </div>
-                    <div className="mt-2.5 flex items-center gap-1 text-[11px] font-medium text-[#7A807A] group-hover:text-[#C66A42]">
-                      <span>Retrieve Market Benchmark</span>
-                      <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
+                    <span className="text-[10px] text-cyan-600 font-semibold mt-2 flex items-center gap-1 group-hover:underline">
+                      <span>Query Google Search</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </span>
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="p-3 bg-white rounded-md border border-[#E4E5DC] text-xs text-[#555C56] space-y-1">
-              <div className="flex items-center gap-1.5 font-semibold text-[#252B28]">
-                <Database className="w-3.5 h-3.5 text-[#245C45]" />
-                <span>Safe Read-Only Operations</span>
-              </div>
-              <p className="text-[11px] text-[#6F756F] leading-relaxed">
-                All generated queries execute parameterized read-only SELECT statements against connected store tables.
-              </p>
             </div>
           </div>
         ) : (
@@ -359,24 +380,24 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
               >
                 {/* Avatar */}
                 <div
-                  className={`w-7 h-7 rounded-md shrink-0 flex items-center justify-center text-xs font-bold ${
+                  className={`w-8 h-8 rounded-xl shrink-0 flex items-center justify-center text-xs font-bold shadow-xs ${
                     isUser
-                      ? 'bg-[#245C45] text-white'
-                      : 'bg-[#1C2520] text-[#DCE7DD]'
+                      ? 'bg-gradient-to-tr from-indigo-600 to-purple-600 text-white'
+                      : 'bg-gradient-to-tr from-purple-600 to-cyan-500 text-white'
                   }`}
                 >
-                  {isUser ? 'U' : <Bot className="w-4 h-4 text-[#DCE7DD]" />}
+                  {isUser ? 'U' : <Bot className="w-4 h-4 text-white" />}
                 </div>
 
                 {/* Message Bubble */}
                 <div className={`space-y-2 max-w-2xl ${isUser ? 'items-end' : 'items-start'}`}>
                   <div
-                    className={`p-3.5 rounded-md text-xs leading-relaxed ${
+                    className={`p-4 rounded-2xl text-xs leading-relaxed shadow-xs ${
                       isUser
-                        ? 'bg-[#245C45] text-white'
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white'
                         : msg.isError
-                        ? 'bg-[#F9ECEB] border border-[#F0CECA] text-[#B9473F]'
-                        : 'bg-white border border-[#E4E5DC] text-[#252B28]'
+                        ? 'bg-rose-50 border border-rose-200 text-rose-800'
+                        : 'bg-white border border-slate-200/90 text-slate-800'
                     }`}
                   >
                     <p className="whitespace-pre-line text-xs font-normal">
@@ -385,32 +406,32 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
 
                     {/* Numeric Metric Highlight Card */}
                     {msg.metric && (
-                      <div className="mt-3 p-3 bg-[#F7F6F0] rounded-md border border-[#E4E5DC] flex items-center justify-between gap-4">
+                      <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-4">
                         <div>
-                          <div className="text-[11px] font-medium text-[#6F756F]">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                             {msg.metric.label}
                           </div>
-                          <div className="text-xl font-bold font-mono tabular-nums text-[#252B28] tracking-tight">
+                          <div className="text-2xl font-extrabold font-mono tabular-nums text-slate-900 tracking-tight mt-0.5">
                             {msg.metric.value}
                           </div>
                         </div>
                         {msg.metric.subtext && (
-                          <div className="text-[11px] font-medium text-[#245C45] bg-[#E8EFEA] px-2 py-0.5 rounded border border-[#CCDACC] shrink-0">
+                          <div className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200 shrink-0">
                             {msg.metric.subtext}
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Visual Chart Graphic (Comparison/Distribution) */}
+                    {/* Visual Chart Graphic */}
                     {msg.chartData && msg.chartData.items && msg.chartData.items.length > 0 && (
-                      <div className="mt-3 p-3 bg-[#F7F6F0] rounded-md border border-[#E4E5DC] space-y-2.5">
+                      <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1.5 text-xs font-bold text-[#252B28]">
-                            <BarChart3 className="w-3.5 h-3.5 text-[#245C45]" />
+                          <span className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                            <BarChart3 className="w-4 h-4 text-indigo-600" />
                             <span>{msg.chartData.title}</span>
                           </span>
-                          <span className="text-[10px] uppercase font-bold text-[#7A807A] font-mono">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 font-mono px-2 py-0.5 rounded bg-white border border-slate-200">
                             {msg.chartData.type === 'donut' ? 'Distribution' : 'Comparison'}
                           </span>
                         </div>
@@ -418,26 +439,26 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
                         <div className="space-y-2 pt-1">
                           {msg.chartData.items.slice(0, 8).map((item, idx) => {
                             const maxVal = Math.max(...msg.chartData!.items.map(i => i.value)) || 1;
-                            const pct = Math.min(100, Math.max(6, Math.round((item.value / maxVal) * 100)));
+                            const pct = Math.min(100, Math.max(8, Math.round((item.value / maxVal) * 100)));
                             const barPalette = [
-                              '#245C45', '#7E9F8B', '#C66A42', '#3D4A43',
-                              '#D48D3B', '#5A7568', '#A25936', '#87948B'
+                              '#6366F1', '#3B82F6', '#06B6D4', '#10B981',
+                              '#F59E0B', '#8B5CF6', '#F43F5E', '#14B8A6'
                             ];
                             const color = barPalette[idx % barPalette.length];
 
                             return (
                               <div key={idx} className="space-y-1">
-                                <div className="flex items-center justify-between text-[11px]">
-                                  <span className="font-medium text-[#252B28] truncate max-w-[220px]">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-semibold text-slate-800 truncate max-w-[220px]">
                                     {item.label}
                                   </span>
-                                  <span className="font-mono tabular-nums font-semibold text-[#252B28]">
+                                  <span className="font-mono tabular-nums font-bold text-slate-900">
                                     {item.value >= 1000 ? `$${item.value.toLocaleString()}` : item.value}
                                   </span>
                                 </div>
-                                <div className="h-2 w-full bg-[#EAEBE2] rounded-xs overflow-hidden">
+                                <div className="h-2.5 w-full bg-slate-200/80 rounded-full overflow-hidden p-0.5">
                                   <div 
-                                    className="h-full rounded-xs transition-all duration-300"
+                                    className="h-full rounded-full transition-all duration-300"
                                     style={{ width: `${pct}%`, backgroundColor: color }}
                                   />
                                 </div>
@@ -450,23 +471,23 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
 
                     {/* Formatted Data Table */}
                     {msg.tableData && msg.tableData.rows.length > 0 && (
-                      <div className="mt-3 border border-[#E4E5DC] rounded-md overflow-hidden">
+                      <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                         <div className="overflow-x-auto max-h-60">
-                          <table className="w-full text-left text-[11px] font-mono tabular-nums border-collapse">
-                            <thead className="bg-[#F7F6F0] text-[#555C56] font-semibold border-b border-[#E4E5DC] font-sans">
+                          <table className="w-full text-left text-xs font-mono tabular-nums border-collapse">
+                            <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 font-sans">
                               <tr>
                                 {msg.tableData.columns.map((col) => (
-                                  <th key={col} className="py-2 px-3 whitespace-nowrap">
+                                  <th key={col} className="py-2.5 px-3 whitespace-nowrap">
                                     {col.replace(/_/g, ' ')}
                                   </th>
                                 ))}
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#EAEBE2] bg-white">
+                            <tbody className="divide-y divide-slate-100 bg-white">
                               {msg.tableData.rows.map((row, rIdx) => (
-                                <tr key={rIdx} className="hover:bg-[#F9FAF6]">
+                                <tr key={rIdx} className="hover:bg-slate-50">
                                   {msg.tableData!.columns.map((col) => (
-                                    <td key={col} className="py-2 px-3 whitespace-nowrap text-[#252B28]">
+                                    <td key={col} className="py-2 px-3 whitespace-nowrap text-slate-800">
                                       {row[col] !== undefined && row[col] !== null ? String(row[col]) : '-'}
                                     </td>
                                   ))}
@@ -478,75 +499,61 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
                       </div>
                     )}
 
-                    {/* Google Search Grounding Sources & Query Citations */}
-                    {msg.groundingMetadata && (
-                      <div className="mt-3 p-3 bg-[#F7F6F0] rounded-md border border-[#E4E5DC] space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#252B28]">
-                            <Globe className="w-3.5 h-3.5 text-[#C66A42]" />
-                            <span>Grounded Market Intel</span>
+                    {/* Grounding Citations */}
+                    {msg.groundingMetadata?.sources && msg.groundingMetadata.sources.length > 0 && (
+                      <div className="mt-3 p-3 bg-cyan-50/60 rounded-xl border border-cyan-100 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-cyan-900">
+                          <div className="flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-cyan-700" />
+                            <span>Grounded Market Citations</span>
                           </div>
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-medium bg-[#FDF3EC] text-[#C66A42] border border-[#F2D7C7]">
-                            Search Grounded
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">
+                            {msg.groundingMetadata.sources.length} Verified Sources
                           </span>
                         </div>
-
-                        {msg.groundingMetadata.sources && msg.groundingMetadata.sources.length > 0 && (
-                          <div className="space-y-1 pt-1">
-                            <div className="text-[10px] uppercase font-bold tracking-wider text-[#7A807A]">
-                              Citations ({msg.groundingMetadata.sources.length})
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                              {msg.groundingMetadata.sources.map((src, sIdx) => (
-                                <a
-                                  key={sIdx}
-                                  href={src.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 bg-white rounded-md border border-[#E4E5DC] hover:border-[#C66A42] transition-colors flex items-start justify-between gap-2 text-left"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-[11px] font-medium text-[#252B28] hover:text-[#C66A42] truncate transition-colors">
-                                      {src.title || src.url}
-                                    </p>
-                                    <p className="text-[10px] text-[#7A807A] truncate font-mono">
-                                      {src.url.replace(/^https?:\/\/(www\.)?/, '')}
-                                    </p>
-                                  </div>
-                                  <ExternalLink className="w-3 h-3 text-[#7A807A] shrink-0 mt-0.5" />
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                          {msg.groundingMetadata.sources.map((src, sIdx) => (
+                            <a
+                              key={sIdx}
+                              href={src.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-cyan-100 text-[11px] text-cyan-900 hover:border-cyan-300 transition-colors truncate"
+                            >
+                              <span className="truncate">{src.title}</span>
+                              <ExternalLink className="w-3 h-3 text-cyan-600 shrink-0" />
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     )}
 
-                    {/* Collapsible SQL Query Disclosure */}
+                    {/* Collapsible SQL Query Inspector */}
                     {msg.sqlQuery && (
-                      <div className="mt-2.5 pt-2 border-t border-[#E4E5DC]">
+                      <div className="mt-3 pt-2 border-t border-slate-100">
                         <button
                           type="button"
                           onClick={() => toggleSqlExpand(msg.id)}
-                          className="flex items-center gap-1.5 text-[11px] font-semibold text-[#6F756F] hover:text-[#252B28] transition-colors cursor-pointer"
+                          className="flex items-center justify-between w-full text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
                         >
-                          <Code2 className="w-3.5 h-3.5 text-[#245C45]" />
-                          <span>{isExpanded ? 'Hide Executed SQL' : 'View Executed SQL'}</span>
-                          {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          <span className="flex items-center gap-1.5 font-mono">
+                            <Code2 className="w-3.5 h-3.5" />
+                            <span>{isExpanded ? 'Hide Executed SQL' : 'View Executed SQL'}</span>
+                          </span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </button>
 
                         {isExpanded && (
-                          <div className="mt-2 relative rounded-md bg-[#1C2520] p-3 text-[11px] font-mono text-[#DCE7DD] border border-[#2B3830]">
-                            <pre className="overflow-x-auto whitespace-pre-wrap">
-                              {msg.sqlQuery}
-                            </pre>
+                          <div className="mt-2 p-3 bg-slate-900 rounded-xl text-slate-100 text-[11px] font-mono relative overflow-x-auto">
+                            <code>{msg.sqlQuery}</code>
                             <button
+                              type="button"
                               onClick={() => handleCopySql(msg.id, msg.sqlQuery!)}
-                              className="absolute top-2 right-2 p-1.5 text-[#8E9F94] hover:text-white rounded bg-[#2B3830] transition-colors cursor-pointer"
-                              title="Copy SQL to clipboard"
+                              className="absolute top-2.5 right-2.5 p-1 rounded bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                              title="Copy SQL query"
                             >
                               {copiedSqlId === msg.id ? (
-                                <Check className="w-3.5 h-3.5 text-[#8EA898]" />
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" />
                               )}
@@ -557,20 +564,20 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
                     )}
                   </div>
 
-                  {/* Message Meta */}
-                  <div className={`flex items-center gap-2 text-[10px] text-[#7A807A] px-1 font-mono ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  {/* Message Timestamp */}
+                  <div className={`flex items-center gap-2 text-[10px] text-slate-400 px-1 font-mono ${isUser ? 'justify-end' : 'justify-start'}`}>
                     <span>{msg.timestamp}</span>
                     {msg.queryType && (
                       <>
                         <span>·</span>
-                        <span className="font-sans font-medium text-[#555C56]">
+                        <span className="font-semibold text-slate-600">
                           {msg.queryType === 'exact_pattern'
-                            ? 'Deterministic Pattern'
+                            ? 'Pattern Match'
                             : msg.queryType === 'google_search_grounding'
-                            ? 'Google Search Grounding'
+                            ? 'Google Grounding'
                             : msg.queryType === 'gemini_reasoning'
                             ? 'Gemini 3.8 Flash'
-                            : 'Database SQL Query'}
+                            : 'MySQL Query'}
                         </span>
                       </>
                     )}
@@ -584,22 +591,22 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
         {/* Processing Indicator */}
         {isSubmitting && (
           <div className="flex gap-3 max-w-xl mr-auto animate-in fade-in duration-150">
-            <div className="w-7 h-7 rounded-md bg-[#1C2520] text-[#DCE7DD] flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
               <Bot className="w-4 h-4" />
             </div>
-            <div className="p-3 bg-white rounded-md border border-[#E4E5DC] space-y-1.5">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#252B28]">
-                <Sparkles className="w-3.5 h-3.5 text-[#245C45] animate-spin" />
+            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                <Sparkles className="w-4 h-4 text-purple-600 animate-spin" />
                 <span>
                   {useSearchGrounding
-                    ? 'Retrieving market retail benchmarks...'
-                    : 'Querying merchandise database...'}
+                    ? 'Retrieving live market retail pricing benchmarks...'
+                    : 'Querying merchandise database with Gemini 3.8 Flash...'}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#245C45] animate-pulse" />
-                <div className="w-1.5 h-1.5 rounded-full bg-[#245C45] animate-pulse delay-100" />
-                <div className="w-1.5 h-1.5 rounded-full bg-[#245C45] animate-pulse delay-200" />
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-purple-500 animate-bounce" />
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce delay-100" />
+                <div className="w-2 h-2 rounded-full bg-cyan-500 animate-bounce delay-200" />
               </div>
             </div>
           </div>
@@ -608,26 +615,25 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
       </div>
 
       {/* Input Box Footer */}
-      <div className="pt-3 border-t border-[#E4E5DC] shrink-0 space-y-2">
-        {/* Toggle Mode Bar */}
+      <div className="pt-3 border-t border-slate-200 shrink-0 space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setUseSearchGrounding(!useSearchGrounding)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer ${
                 useSearchGrounding
-                  ? 'bg-[#C66A42] text-white'
-                  : 'bg-white text-[#555C56] border border-[#E4E5DC] hover:bg-[#F7F6F0]'
+                  ? 'bg-gradient-to-r from-cyan-600 to-teal-600 text-white shadow-cyan-500/20'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
               }`}
             >
               <Globe className="w-3.5 h-3.5" />
-              <span>Google Search Grounding: {useSearchGrounding ? 'ON' : 'OFF'}</span>
+              <span>Google Search Grounding: {useSearchGrounding ? 'ACTIVE' : 'OFF'}</span>
             </button>
-            <span className="text-[11px] text-[#7A807A] hidden sm:inline">
+            <span className="text-[11px] text-slate-400 hidden sm:inline">
               {useSearchGrounding
-                ? 'Retrieves real-time market retail pricing and competitor benchmarks'
-                : 'Runs schema-grounded SQL against active store database'}
+                ? 'Retrieves real-time retail market prices and competitor pricing trends'
+                : 'Runs schema-grounded queries against active store database'}
             </span>
           </div>
         </div>
@@ -647,22 +653,23 @@ export const AssistantView: React.FC<AssistantViewProps> = ({ lowStockThreshold,
             disabled={isSubmitting}
             placeholder={
               useSearchGrounding
-                ? "Search live web for market retail pricing or competitor benchmarks..."
-                : "Ask an inventory inquiry (e.g. 'How many white Levi\'s T-shirts do we have?')..."
+                ? "Search live web for retail pricing benchmarks, apparel trends, competitor prices..."
+                : "Ask an inventory question (e.g. 'How many white Nike T-shirts do we have?')..."
             }
-            className="w-full pl-3.5 pr-11 py-2.5 bg-white border border-[#E4E5DC] rounded-md text-xs text-[#252B28] placeholder-[#9BA19B] focus:outline-hidden focus:border-[#245C45] focus:ring-1 focus:ring-[#245C45] transition-colors disabled:bg-[#F7F6F0]"
+            className="w-full pl-4 pr-12 py-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-xs disabled:bg-slate-100"
           />
           <button
             type="submit"
             disabled={!inputQuery.trim() || isSubmitting}
-            className="absolute right-1.5 p-1.5 bg-[#245C45] hover:bg-[#1C4A37] text-white rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            className="absolute right-2 p-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm shadow-indigo-500/20 active:scale-95"
             aria-label="Send query"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
         </form>
-        <div className="flex items-center justify-between text-[11px] text-[#7A807A] px-1 font-mono">
-          <span>Press Enter to inquire</span>
+
+        <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 font-mono">
+          <span>Press Enter to send inquiry</span>
           <span>Read-only SELECT access · {databaseName}</span>
         </div>
       </div>

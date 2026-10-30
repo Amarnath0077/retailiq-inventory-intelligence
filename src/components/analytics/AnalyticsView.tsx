@@ -3,7 +3,14 @@ import {
   BarChart3, 
   PieChart, 
   Filter, 
-  Info
+  Info,
+  TrendingUp,
+  Layers,
+  Sparkles,
+  Award,
+  DollarSign,
+  Boxes,
+  Package
 } from 'lucide-react';
 import { InventoryMetrics } from '../../types/inventory.ts';
 
@@ -12,16 +19,39 @@ interface AnalyticsViewProps {
   isLoading: boolean;
 }
 
+const BRAND_PALETTE: string[] = [
+  '#6366F1', // Indigo
+  '#3B82F6', // Blue
+  '#06B6D4', // Cyan
+  '#10B981', // Emerald
+  '#F59E0B', // Amber
+  '#8B5CF6', // Purple
+  '#F43F5E', // Rose
+  '#14B8A6'  // Teal
+];
+
+const FABRIC_SWATCHES: Record<string, { bg: string; border: string; text: string }> = {
+  White: { bg: '#FFFFFF', border: '#CBD5E1', text: '#0F172A' },
+  Black: { bg: '#0F172A', border: '#334155', text: '#FFFFFF' },
+  Red: { bg: '#EF4444', border: '#DC2626', text: '#FFFFFF' },
+  Blue: { bg: '#2563EB', border: '#1D4ED8', text: '#FFFFFF' },
+  Green: { bg: '#10B981', border: '#059669', text: '#FFFFFF' },
+  Yellow: { bg: '#F59E0B', border: '#D97706', text: '#0F172A' },
+  Grey: { bg: '#64748B', border: '#475569', text: '#FFFFFF' },
+  Standard: { bg: '#6366F1', border: '#4F46E5', text: '#FFFFFF' }
+};
+
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ metrics, isLoading }) => {
   const [selectedBrandFilter, setSelectedBrandFilter] = useState<string>('all');
+  const [hoveredSlice, setHoveredSlice] = useState<number | null>(null);
 
   if (isLoading && !metrics) {
     return (
-      <div className="p-6 md:p-8 space-y-5 max-w-7xl mx-auto">
-        <div className="h-6 w-48 bg-[#EAEBE2] animate-pulse rounded-md" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
+        <div className="h-8 w-64 bg-slate-200 animate-pulse rounded-xl" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-28 bg-white rounded-md border border-[#E4E5DC] animate-pulse" />
+            <div key={i} className="h-32 bg-white rounded-xl border border-slate-200 animate-pulse" />
           ))}
         </div>
       </div>
@@ -30,12 +60,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ metrics, isLoading
 
   if (!metrics || metrics.totalProducts === 0) {
     return (
-      <div className="p-8 md:p-12 text-center max-w-xl mx-auto my-12 bg-white rounded-lg border border-[#E4E5DC]">
-        <div className="w-12 h-12 rounded-xl bg-[#E8EFEA] text-[#245C45] flex items-center justify-center mx-auto mb-3">
-          <BarChart3 className="w-6 h-6" />
+      <div className="p-8 md:p-14 text-center max-w-lg mx-auto my-14 bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
+          <BarChart3 className="w-7 h-7" />
         </div>
-        <h3 className="text-base font-bold text-[#252B28] mb-1">No inventory data available</h3>
-        <p className="text-xs text-[#6F756F]">
+        <h3 className="text-lg font-bold text-slate-900 mb-1.5">No inventory data available</h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
           Connect your database or import a CSV/PDF file to get started. Stock distribution, entity concentrations, and valuation analytics will calculate once inventory records are loaded.
         </p>
       </div>
@@ -55,34 +85,45 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ metrics, isLoading
   const topBrand = metrics.brandDistribution[0];
   const topBrandShare = topBrand ? topBrand.pctOfTotalUnits : 0;
 
-  const colorPalette: Record<string, string> = {
-    White: '#FFFFFF',
-    Black: '#252B28',
-    Red: '#B9473F',
-    Blue: '#3B6B8A'
-  };
+  // Donut chart calculation
+  let cumulativeAngle = 0;
+  const totalBrandUnits = metrics.brandDistribution.reduce((acc, b) => acc + b.units, 0) || 1;
+  const donutSlices = metrics.brandDistribution.slice(0, 6).map((b, idx) => {
+    const angle = (b.units / totalBrandUnits) * 360;
+    const startAngle = cumulativeAngle;
+    cumulativeAngle += angle;
+    return {
+      label: b.brand,
+      units: b.units,
+      value: b.value,
+      pct: Math.round((b.units / totalBrandUnits) * 100),
+      startAngle,
+      angle,
+      color: BRAND_PALETTE[idx % BRAND_PALETTE.length]
+    };
+  });
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto text-[#252B28]">
+    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto text-slate-800">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E4E5DC] pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[#252B28]">
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900">
             Stock Distribution & Valuation
           </h1>
-          <p className="mt-1 text-xs text-[#6F756F]">
-            Merchandise performance matrix, colorway concentration, and asset valuation.
+          <p className="mt-1 text-xs md:text-sm text-slate-500">
+            Brand allocation matrix, fabric colorway concentration, and asset capital distribution.
           </p>
         </div>
 
         {/* Global Brand Filter */}
-        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-md border border-[#E4E5DC]">
-          <Filter className="w-3.5 h-3.5 text-[#6F756F]" />
-          <span className="text-xs text-[#6F756F] font-medium">Scope:</span>
+        <div className="flex items-center gap-2 bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-2xs">
+          <Filter className="w-4 h-4 text-indigo-600" />
+          <span className="text-xs text-slate-500 font-semibold">Scope:</span>
           <select
             value={selectedBrandFilter}
             onChange={(e) => setSelectedBrandFilter(e.target.value)}
-            className="text-xs font-semibold text-[#252B28] bg-transparent focus:outline-hidden cursor-pointer"
+            className="text-xs font-bold text-slate-800 bg-transparent focus:outline-hidden cursor-pointer"
           >
             <option value="all">All Brands (Consolidated)</option>
             {metrics.brandDistribution.map(b => (
@@ -93,121 +134,254 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ metrics, isLoading
       </div>
 
       {/* Accounting Distinction Notice */}
-      <div className="bg-white border border-[#E4E5DC] rounded-md p-3.5 flex items-start gap-2.5 text-xs text-[#555C56]">
-        <Info className="w-4 h-4 text-[#245C45] shrink-0 mt-0.5" />
+      <div className="bg-gradient-to-r from-indigo-50/70 via-blue-50/50 to-slate-50 border border-indigo-100 rounded-xl p-4 flex items-start gap-3 text-xs text-slate-600 shadow-2xs">
+        <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
         <div className="leading-relaxed">
-          <strong className="text-[#252B28]">Merchandise Accounting Principle:</strong> <strong>Inventory Valuation</strong> represents held physical asset capital calculated at base unit list prices (<span className="font-mono font-medium">Price × Quantity</span>). POS realized revenue adjusts dynamically after campaign discounts.
+          <strong className="text-slate-900">Merchandise Accounting Principle:</strong> <strong>Inventory Valuation</strong> represents capital invested in physical assets calculated as <span className="font-mono font-bold text-indigo-700">Unit Price × Stock Quantity</span>. Realized revenue adjusts dynamically with sales and promotional discounts.
         </div>
       </div>
 
-      {/* Analytical KPI summary (Compact 3-column panel) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        <div className="bg-white rounded-md border border-[#E4E5DC] p-4">
-          <div className="text-[11px] font-semibold text-[#6E746E] uppercase tracking-wider">
-            {isAllBrands ? 'Analyzed Physical Stock' : `${selectedBrandFilter} Physical Stock`}
+      {/* Analytical KPI Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Physical Stock Card (Blue) */}
+        <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              {isAllBrands ? 'Analyzed Physical Stock' : `${selectedBrandFilter} Physical Stock`}
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Boxes className="w-4 h-4" />
+            </div>
           </div>
-          <div className="mt-1.5 text-2xl font-bold font-mono tabular-nums text-[#252B28]">
+          <div className="text-2xl lg:text-3xl font-extrabold font-mono tabular-nums text-slate-900">
             {activeUnits.toLocaleString()} units
           </div>
-          <div className="mt-1 text-[11px] text-[#787E78]">
-            {isAllBrands ? 'Consolidated catalog units' : `${Math.round((activeUnits / metrics.totalUnits) * 100)}% of total held inventory`}
+          <div className="mt-2 text-xs text-slate-500 flex items-center gap-1.5 font-medium">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+            <span>{isAllBrands ? 'Total catalog units' : `${Math.round((activeUnits / metrics.totalUnits) * 100)}% of total held inventory`}</span>
           </div>
+          <div className="absolute bottom-0 left-4 right-4 h-0.5 bg-blue-500 rounded-full" />
         </div>
 
-        <div className="bg-white rounded-md border border-[#E4E5DC] p-4">
-          <div className="text-[11px] font-semibold text-[#6E746E] uppercase tracking-wider">
-            {isAllBrands ? 'Held Capital Valuation' : `${selectedBrandFilter} Capital Valuation`}
+        {/* Capital Valuation Card (Emerald) */}
+        <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              {isAllBrands ? 'Held Capital Valuation' : `${selectedBrandFilter} Capital Valuation`}
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <DollarSign className="w-4 h-4" />
+            </div>
           </div>
-          <div className="mt-1.5 text-2xl font-bold font-mono tabular-nums text-[#245C45]">
+          <div className="text-2xl lg:text-3xl font-extrabold font-mono tabular-nums text-emerald-600">
             ${activeValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <div className="mt-1 text-[11px] text-[#787E78]">
-            Average unit price: ${metrics.averagePrice.toFixed(2)}
+          <div className="mt-2 text-xs text-slate-500 flex items-center gap-1.5 font-medium">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Average unit price: ${metrics.averagePrice.toFixed(2)}</span>
+          </div>
+          <div className="absolute bottom-0 left-4 right-4 h-0.5 bg-emerald-500 rounded-full" />
+        </div>
+
+        {/* Brand Concentration Card (Purple) */}
+        <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Lead Brand Share
+            </span>
+            <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+              <Award className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl lg:text-3xl font-extrabold font-mono tabular-nums text-purple-600">
+            {topBrandShare}%
+          </div>
+          <div className="mt-2 text-xs text-slate-500 flex items-center gap-1.5 font-medium">
+            <span className="inline-block w-2 h-2 rounded-full bg-purple-500" />
+            <span>Leading entity: <strong className="text-slate-800">{topBrand?.brand}</strong></span>
+          </div>
+          <div className="absolute bottom-0 left-4 right-4 h-0.5 bg-purple-500 rounded-full" />
+        </div>
+      </div>
+
+      {/* Visual Analytics Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Brand Merchandising Matrix */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-indigo-600" />
+                  <span>Brand Capital & Volume Allocation</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Physical units versus capital invested per brand</p>
+              </div>
+              <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                {filteredBrandData.length} Brands
+              </span>
+            </div>
+
+            <div className="space-y-3.5">
+              {filteredBrandData.map((b, idx) => {
+                const color = BRAND_PALETTE[idx % BRAND_PALETTE.length];
+                return (
+                  <div key={b.brand} className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 font-bold text-slate-900">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                        <span>{b.brand}</span>
+                      </div>
+                      <span className="font-mono text-slate-500 text-[11px] font-semibold bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {b.productCount} SKUs
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-xs font-mono tabular-nums pt-2 border-t border-slate-200/60">
+                      <div>
+                        <span className="text-[10px] uppercase font-sans text-slate-400 font-bold block mb-0.5">Units & Share</span>
+                        <span className="font-bold text-slate-800">{b.units.toLocaleString()} units</span>
+                        <span className="text-slate-400 ml-1">({b.pctOfTotalUnits}%)</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-sans text-slate-400 font-bold block mb-0.5">Held Valuation</span>
+                        <span className="font-bold text-emerald-600">${b.value.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-md border border-[#E4E5DC] p-4">
-          <div className="text-[11px] font-semibold text-[#6E746E] uppercase tracking-wider">
-            Lead Brand Concentration
+        {/* Donut Chart: Brand Volume Share Concentration */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <PieChart className="w-5 h-5 text-cyan-600" />
+                  <span>Volume Share Donut</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Interactive percentage concentration of inventory</p>
+              </div>
+              <span className="text-[10px] font-mono font-bold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full">
+                Interactive
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center justify-center py-2">
+              <div className="relative w-48 h-48 my-2">
+                <svg viewBox="0 0 100 100" className="w-full h-full transform -rotate-90">
+                  {donutSlices.map((slice, idx) => {
+                    const strokeDasharray = `${(slice.pct * 251.2) / 100} 251.2`;
+                    const strokeDashoffset = -((slice.startAngle / 360) * 251.2);
+                    const isHovered = hoveredSlice === idx;
+                    return (
+                      <circle
+                        key={idx}
+                        cx="50"
+                        cy="50"
+                        r="38"
+                        fill="transparent"
+                        stroke={slice.color}
+                        strokeWidth={isHovered ? "14" : "11"}
+                        strokeDasharray={strokeDasharray}
+                        strokeDashoffset={strokeDashoffset}
+                        onMouseEnter={() => setHoveredSlice(idx)}
+                        onMouseLeave={() => setHoveredSlice(null)}
+                        className="transition-all duration-200 cursor-pointer"
+                      />
+                    );
+                  })}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-2xl font-extrabold font-mono tabular-nums text-slate-900">
+                    {hoveredSlice !== null ? `${donutSlices[hoveredSlice].pct}%` : `${metrics.totalProducts}`}
+                  </span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    {hoveredSlice !== null ? donutSlices[hoveredSlice].label : 'Total SKUs'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Legends with direct click/hover highlight */}
+              <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                {donutSlices.map((item, idx) => (
+                  <div
+                    key={item.label}
+                    onMouseEnter={() => setHoveredSlice(idx)}
+                    onMouseLeave={() => setHoveredSlice(null)}
+                    className={`flex items-center justify-between p-2 rounded-lg text-xs cursor-pointer transition-all ${
+                      hoveredSlice === idx ? 'bg-indigo-50 font-bold border border-indigo-200' : 'bg-slate-50 hover:bg-slate-100 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-slate-800 truncate max-w-[90px]">{item.label}</span>
+                    </div>
+                    <span className="font-mono text-slate-600 font-bold text-xs">
+                      {item.pct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="mt-1.5 text-2xl font-bold font-mono tabular-nums text-[#C66A42]">
-            {topBrandShare}%
-          </div>
-          <div className="mt-1 text-[11px] text-[#787E78]">
-            Held by primary brand: <strong className="text-[#252B28]">{topBrand?.brand}</strong>
+
+          <div className="pt-4 mt-4 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+            <span>Hover slices for live breakdowns</span>
+            <span className="font-mono font-bold text-slate-700">${metrics.totalInventoryValue.toLocaleString()} Total</span>
           </div>
         </div>
       </div>
 
-      {/* Analytical Visualizations */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Brand Comparison Matrix */}
-        <div className="bg-white rounded-md border border-[#E4E5DC] p-5">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#E4E5DC]">
+      {/* Colorway & Size Distribution Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Colorway Concentration */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+          <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
             <div>
-              <h2 className="text-sm font-bold text-[#252B28]">Brand Merchandising Matrix</h2>
-              <p className="text-xs text-[#6F756F]">Unit volume vs capital tied up in stock</p>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                <span>Colorway Fabric Concentration</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">Physical unit distribution across color variations</p>
             </div>
-            <BarChart3 className="w-4 h-4 text-[#7A807A]" />
+            <span className="text-xs font-mono font-bold px-2 py-0.5 bg-purple-50 text-purple-700 rounded-md border border-purple-200">
+              {metrics.colorDistribution.length} Colors
+            </span>
           </div>
 
-          <div className="space-y-3">
-            {filteredBrandData.map((b) => (
-              <div key={b.brand} className="p-3 bg-[#F7F6F0] rounded-md border border-[#E4E5DC] space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-[#252B28]">{b.brand}</span>
-                  <span className="font-mono tabular-nums text-[#6F756F] text-[11px]">
-                    {b.productCount} SKU variants
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-xs font-mono tabular-nums pt-1 border-t border-[#E4E5DC]">
-                  <div>
-                    <span className="text-[10px] uppercase font-sans text-[#7A807A] block">Stock Share</span>
-                    <span className="font-semibold text-[#252B28]">{b.units.toLocaleString()} units ({b.pctOfTotalUnits}%)</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-sans text-[#7A807A] block">Held Capital</span>
-                    <span className="font-bold text-[#245C45]">${b.value.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Color Distribution */}
-        <div className="bg-white rounded-md border border-[#E4E5DC] p-5">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#E4E5DC]">
-            <div>
-              <h2 className="text-sm font-bold text-[#252B28]">Colorway Concentration</h2>
-              <p className="text-xs text-[#6F756F]">Unit breakdown across core fabric colorways</p>
-            </div>
-            <PieChart className="w-4 h-4 text-[#7A807A]" />
-          </div>
-
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             {metrics.colorDistribution.map((c) => {
               const maxUnits = Math.max(...metrics.colorDistribution.map(x => x.units), 1);
               const widthPct = Math.round((c.units / maxUnits) * 100);
               const share = Math.round((c.units / metrics.totalUnits) * 100);
+              const swatch = FABRIC_SWATCHES[c.color] || FABRIC_SWATCHES.Standard;
+
               return (
-                <div key={c.color} className="space-y-1">
+                <div key={c.color} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2.5">
                       <span 
-                        className="w-2.5 h-2.5 rounded-xs border border-[#CCD0C5]"
-                        style={{ backgroundColor: colorPalette[c.color] || '#A2A9A0' }}
+                        className="w-4 h-4 rounded-md shadow-xs shrink-0"
+                        style={{ 
+                          backgroundColor: swatch.bg,
+                          border: `1px solid ${swatch.border}`
+                        }}
                       />
-                      <span className="font-medium text-[#252B28]">{c.color}</span>
+                      <span className="font-bold text-slate-800">{c.color}</span>
                     </div>
                     <div className="flex items-center gap-2 font-mono tabular-nums text-xs">
-                      <span className="font-semibold text-[#252B28]">{c.units.toLocaleString()} units</span>
-                      <span className="text-[#7A807A]">({share}%)</span>
+                      <span className="font-bold text-slate-800">{c.units.toLocaleString()} units</span>
+                      <span className="text-slate-400 font-medium">({share}%)</span>
                     </div>
                   </div>
-                  <div className="h-2 w-full bg-[#EAEBE2] rounded-xs overflow-hidden">
+                  <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
                     <div 
-                      className="h-full bg-[#245C45] rounded-xs transition-all duration-300"
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-300"
                       style={{ width: `${widthPct}%` }}
                     />
                   </div>
@@ -216,37 +390,88 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ metrics, isLoading
             })}
           </div>
         </div>
+
+        {/* Size Distribution Breakdown */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+          <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Layers className="w-5 h-5 text-teal-600" />
+                <span>Size & Spec Allocation</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">Sizing curve volume and stock allocation</p>
+            </div>
+            <span className="text-xs font-mono font-bold px-2 py-0.5 bg-teal-50 text-teal-700 rounded-md border border-teal-200">
+              {metrics.sizeDistribution.length > 0 ? `${metrics.sizeDistribution.length} Sizes` : 'Standard'}
+            </span>
+          </div>
+
+          {metrics.sizeDistribution.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400">
+              Size curve distribution not specified in current dataset.
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {metrics.sizeDistribution.map((s, idx) => {
+                const maxSizeUnits = Math.max(...metrics.sizeDistribution.map(x => x.units), 1);
+                const widthPct = Math.round((s.units / maxSizeUnits) * 100);
+                const color = BRAND_PALETTE[idx % BRAND_PALETTE.length];
+                return (
+                  <div key={s.size} className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-800 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 font-mono">
+                        {s.size}
+                      </span>
+                      <span className="font-mono tabular-nums text-xs font-bold text-slate-700">
+                        {s.units.toLocaleString()} units
+                      </span>
+                    </div>
+                    <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden p-0.5">
+                      <div 
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${widthPct}%`, backgroundColor: color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Analytical Summary Table */}
-      <div className="bg-white rounded-md border border-[#E4E5DC] overflow-hidden">
-        <div className="p-4 border-b border-[#E4E5DC]">
-          <h2 className="text-sm font-bold text-[#252B28]">Consolidated Brand Merchandising Audit Table</h2>
-          <p className="text-xs text-[#6F756F] mt-0.5">Audited from active database tables t_shirts and discounts</p>
+      {/* Analytical Audit Table */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+          <h2 className="text-base font-bold text-slate-900">Consolidated Brand Merchandising Audit Table</h2>
+          <p className="text-xs text-slate-500 mt-1">Directly aggregated from connected inventory data rows</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-[#F7F6F0] text-[#555C56] font-semibold border-b border-[#E4E5DC]">
+            <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
               <tr>
-                <th className="py-2.5 px-4">Brand</th>
-                <th className="py-2.5 px-4 text-right">SKU Count</th>
-                <th className="py-2.5 px-4 text-right">Total Units</th>
-                <th className="py-2.5 px-4 text-right">Unit Share</th>
-                <th className="py-2.5 px-4 text-right">Avg Unit Price</th>
-                <th className="py-2.5 px-4 text-right">Inventory Valuation</th>
+                <th className="py-3 px-4">Brand</th>
+                <th className="py-3 px-4 text-right">SKU Count</th>
+                <th className="py-3 px-4 text-right">Total Units</th>
+                <th className="py-3 px-4 text-right">Unit Share</th>
+                <th className="py-3 px-4 text-right">Avg Unit Price</th>
+                <th className="py-3 px-4 text-right">Inventory Valuation</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#EAEBE2] font-mono tabular-nums">
-              {metrics.brandDistribution.map((b) => (
-                <tr key={b.brand} className="hover:bg-[#F9FAF6] font-sans">
-                  <td className="py-2.5 px-4 font-semibold text-[#252B28]">{b.brand}</td>
-                  <td className="py-2.5 px-4 text-right font-mono text-[#555C56]">{b.productCount}</td>
-                  <td className="py-2.5 px-4 text-right font-mono font-bold text-[#252B28]">{b.units.toLocaleString()}</td>
-                  <td className="py-2.5 px-4 text-right font-mono text-[#6F756F]">{b.pctOfTotalUnits}%</td>
-                  <td className="py-2.5 px-4 text-right font-mono text-[#555C56]">
+            <tbody className="divide-y divide-slate-100 font-mono tabular-nums">
+              {metrics.brandDistribution.map((b, idx) => (
+                <tr key={b.brand} className="hover:bg-slate-50/80 font-sans transition-colors">
+                  <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: BRAND_PALETTE[idx % BRAND_PALETTE.length] }} />
+                    <span>{b.brand}</span>
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-slate-600">{b.productCount}</td>
+                  <td className="py-3 px-4 text-right font-mono font-bold text-slate-800">{b.units.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-right font-mono font-semibold text-indigo-600">{b.pctOfTotalUnits}%</td>
+                  <td className="py-3 px-4 text-right font-mono text-slate-600">
                     ${(b.value / Math.max(b.units, 1)).toFixed(2)}
                   </td>
-                  <td className="py-2.5 px-4 text-right font-mono font-bold text-[#245C45]">
+                  <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
                     ${b.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                 </tr>
