@@ -33,48 +33,68 @@ class UserInventoryStore {
   private userStores = new Map<string, UserInventoryData>();
 
   constructor() {
-    this.ensureDir();
+    this.ensureDirs();
   }
 
-  private ensureDir() {
-    try {
-      if (!fs.existsSync(TENANTS_DIR)) {
-        fs.mkdirSync(TENANTS_DIR, { recursive: true });
+  private getDirs(): string[] {
+    const localDir = path.resolve(__dirname, '../data/user_inventories');
+    const tmpDir = '/tmp/retailiq_data/user_inventories';
+    return [localDir, tmpDir];
+  }
+
+  private ensureDirs() {
+    for (const dir of this.getDirs()) {
+      try {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+      } catch {
+        // Continue gracefully
       }
-    } catch {
-      // In-memory fallback if disk writes are restricted
     }
   }
 
-  private getTenantFilePath(userId: string): string {
+  private getTenantFilePaths(userId: string): string[] {
     const safeId = userId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    return path.resolve(TENANTS_DIR, `${safeId}.json`);
+    return this.getDirs().map(dir => path.resolve(dir, `${safeId}.json`));
   }
 
   private persistUser(userId: string) {
-    try {
-      this.ensureDir();
-      const data = this.userStores.get(userId);
-      if (data) {
-        fs.writeFileSync(this.getTenantFilePath(userId), JSON.stringify(data, null, 2), 'utf-8');
+    const data = this.userStores.get(userId);
+    if (!data) return;
+
+    this.ensureDirs();
+    const paths = this.getTenantFilePaths(userId);
+    let savedAny = false;
+
+    for (const p of paths) {
+      try {
+        fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf-8');
+        savedAny = true;
+      } catch {
+        // Try next candidate directory
       }
-    } catch (err) {
-      // Continue gracefully in-memory
+    }
+
+    if (!savedAny) {
+      // Data remains safely in RAM
     }
   }
 
   private loadUserFromDisk(userId: string): UserInventoryData | null {
-    try {
-      const filePath = this.getTenantFilePath(userId);
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        const parsed: UserInventoryData = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.records)) {
-          return parsed;
+    const paths = this.getTenantFilePaths(userId);
+    for (const p of paths) {
+      try {
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, 'utf-8');
+          const parsed: UserInventoryData = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.records) && parsed.records.length > 0) {
+            return parsed;
+          }
         }
+      } catch {
+        // Try next candidate
       }
-    } catch {
-      // Fall through to empty store
     }
     return null;
   }
@@ -142,9 +162,11 @@ class UserInventoryStore {
     userState.lastUpdated = '';
     this.persistUser(userId);
     try {
-      const filePath = this.getTenantFilePath(userId);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      const paths = this.getTenantFilePaths(userId);
+      for (const p of paths) {
+        if (fs.existsSync(p)) {
+          fs.unlinkSync(p);
+        }
       }
     } catch {}
   }

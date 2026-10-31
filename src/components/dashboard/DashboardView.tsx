@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { InventoryMetrics, ActiveDatasetMeta, CalculatedMetrics } from '../../types/inventory.ts';
 import { apiFetch } from '../../utils/api.ts';
+import { useAuth } from '../../context/AuthContext.tsx';
+import { loadUserDataset } from '../../utils/persistentStorage.ts';
 import { MetricCard } from '../ui/MetricCard.tsx';
 import { StockBadge } from '../ui/Badge.tsx';
 import { FileImportModal } from '../import/FileImportModal.tsx';
@@ -55,6 +57,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   lowStockThreshold,
   onSelectSuggestion
 }) => {
+  const { user } = useAuth();
   const [datasetMeta, setDatasetMeta] = useState<ActiveDatasetMeta | null>(null);
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [dynamicMetrics, setDynamicMetrics] = useState<CalculatedMetrics | null>(null);
@@ -76,7 +79,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       ]);
 
       if (metaRes.ok) {
-        const meta: ActiveDatasetMeta = await metaRes.json();
+        let meta: ActiveDatasetMeta = await metaRes.json();
+
+        // If server shows 0 records, check if this user has a saved dataset
+        if (meta.totalRecords === 0 && user?.id) {
+          try {
+            const saved = await loadUserDataset(user.id);
+            if (saved && Array.isArray(saved.records) && saved.records.length > 0) {
+              const restoreRes = await apiFetch('/api/dataset/restore', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fileType: saved.fileType,
+                  fileName: saved.fileName,
+                  records: saved.records
+                })
+              });
+              if (restoreRes.ok) {
+                const freshMetaRes = await apiFetch('/api/dataset/meta');
+                if (freshMetaRes.ok) {
+                  meta = await freshMetaRes.json();
+                }
+              }
+            }
+          } catch {}
+        }
+
         setDatasetMeta(meta);
         setActiveFilters(prev => {
           const validKeys = new Set(meta.dimensions?.map(d => d.key) || []);
@@ -95,7 +123,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     } catch (err) {
       console.warn('Could not load dynamic dataset metadata:', err);
     }
-  }, []);
+  }, [user]);
 
   // 2. Fetch Calculated Metrics based on dynamic scope filters
   const fetchFilteredMetrics = useCallback(async (filters: Record<string, string>) => {

@@ -1,0 +1,63 @@
+{
+  "userId": "usr_admin_default_lead",
+  "dataSource": {
+    "type": "csv",
+    "name": "products-1000.csv",
+    "totalRecords": 6,
+    "isLive": false,
+    "connectedAt": "2026-10-31T17:13:18.358Z"
+  },
+  "records": [
+    {
+      "product_id": 101,
+      "name": "Running Pro Shoe",
+      "brand": "Nike",
+      "category": "Footwear",
+      "price": 120,
+      "stock_quantity": 45
+    },
+    {
+      "product_id": 102,
+      "name": "Cotton Summer Tee",
+      "brand": "Adidas",
+      "category": "Apparel",
+      "price": 29.99,
+      "stock_quantity": 10
+    },
+    {
+      "product_id": 103,
+      "name": "Denim Slim 511",
+      "brand": "Levi's",
+      "category": "Apparel",
+      "price": 79.5,
+      "stock_quantity": 15
+    },
+    {
+      "product_id": 104,
+      "name": "Speed Tracksuit",
+      "brand": "Puma",
+      "category": "Sportswear",
+      "price": 89,
+      "stock_quantity": 5
+    },
+    {
+      "product_id": 105,
+      "name": "Formal Dress Shirt",
+      "brand": "Van Heusen",
+      "category": "Formal",
+      "price": 49.99,
+      "stock_quantity": 30
+    },
+    {
+      "product_id": 106,
+      "name": "Classic Cap",
+      "brand": "Nike",
+      "category": "Accessories",
+      "price": 25,
+      "stock_quantity": 80
+    }
+  ],
+  "discounts": [],
+  "lowStockThreshold": 15,
+  "lastUpdated": "2026-10-31T17:13:18.358Z"
+}

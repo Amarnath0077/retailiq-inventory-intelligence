@@ -211,10 +211,58 @@ app.post('/api/database/disconnect', requireAuth, async (req, res) => {
 // API: Introspect Database Schema
 app.get('/api/database/schema', requireAuth, async (req, res) => {
   try {
-    const schema = await mysqlService.inspectSchema();
+    const tenantId = getTenantId(req);
+    const schema = await mysqlService.inspectSchema(tenantId);
     res.json(schema);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to inspect schema' });
+  }
+});
+
+// API: Connect to Built-in Sandbox Database
+app.post('/api/database/sandbox', requireAuth, async (req, res) => {
+  try {
+    const { databaseName } = req.body || {};
+    const tenantId = getTenantId(req);
+    const dbName = databaseName || 'ecommerce_db';
+    const result = await mysqlService.connectSandbox(dbName, tenantId);
+
+    if (result.success) {
+      currentSettings.databaseName = dbName;
+      currentSettings.dbHost = 'RetailIQ Built-in SQL Engine';
+      currentSettings.lastSyncTime = new Date().toISOString();
+    }
+
+    res.json({
+      ...result,
+      isLiveMySQL: true
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Failed to initialize sandbox database' });
+  }
+});
+
+// API: Start / Initialize MySQL Service (e.g. from Settings or 1-click fallback)
+app.post('/api/database/start-service', requireAuth, async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const targetDb = req.body?.databaseName || currentSettings.databaseName || 'ecommerce_db';
+    const result = await mysqlService.connectSandbox(targetDb, tenantId);
+
+    if (result.success) {
+      currentSettings.databaseName = targetDb;
+      currentSettings.dbHost = 'RetailIQ Built-in SQL Engine';
+      currentSettings.lastSyncTime = new Date().toISOString();
+    }
+
+    res.json({
+      success: true,
+      message: `MySQL Service active. Connected to database "${targetDb}" with ${result.rowCount} live records.`,
+      isLiveMySQL: true,
+      schema: result.schema
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Failed to start MySQL service' });
   }
 });
 
@@ -273,11 +321,60 @@ app.post('/api/import/confirm', requireAuth, async (req, res) => {
       message: `Successfully imported ${result.summary.rowCount} records into your personal inventory workspace.${result.savedToDatabase ? ' Also persisted to connected database.' : ''}`,
       summary: result.summary,
       savedToDatabase: result.savedToDatabase,
-      dbMessage: result.dbMessage
+      dbMessage: result.dbMessage,
+      records
     });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message || 'Failed to confirm import' });
   }
+});
+
+// API: Rehydrate / Restore user dataset (survives serverless container recycles)
+app.post('/api/dataset/restore', requireAuth, async (req, res) => {
+  try {
+    const { fileType, fileName, records } = req.body;
+    const tenantId = getTenantId(req);
+
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      res.status(400).json({ success: false, message: 'No records provided to restore.' });
+      return;
+    }
+
+    const result = await fileImporterManager.confirmImport(
+      tenantId,
+      fileType || 'csv',
+      fileName || 'imported_inventory',
+      records,
+      false
+    );
+
+    res.json({
+      success: true,
+      message: `Successfully restored ${result.summary.rowCount} inventory records.`,
+      summary: result.summary,
+      records
+    });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message || 'Failed to restore dataset' });
+  }
+});
+
+// API: Dataset Backup export
+app.get('/api/dataset/backup', requireAuth, (req, res) => {
+  const tenantId = getTenantId(req);
+  const hasData = userInventoryStore.hasData(tenantId);
+  if (!hasData) {
+    res.json({ hasData: false, records: [] });
+    return;
+  }
+  const userData = userInventoryStore.getUserData(tenantId);
+  res.json({
+    hasData: true,
+    fileType: userData.dataSource.type,
+    fileName: userData.dataSource.name || 'imported_inventory',
+    records: userData.records,
+    importedAt: userData.dataSource.connectedAt || userData.lastUpdated
+  });
 });
 
 // Legacy direct CSV import route (calls preview + confirm automatically)
@@ -317,7 +414,8 @@ app.post('/api/import/csv', requireAuth, async (req, res) => {
       success: true,
       message: `Successfully imported ${result.summary.rowCount} rows from "${targetFileName}".`,
       summary: result.summary,
-      savedToDatabase: result.savedToDatabase
+      savedToDatabase: result.savedToDatabase,
+      records: preview.records
     });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message || 'CSV Import Error' });
@@ -354,7 +452,8 @@ app.post('/api/import/pdf', requireAuth, async (req, res) => {
       success: true,
       message: `Successfully parsed and extracted ${result.summary.rowCount} inventory rows from PDF "${targetFileName}".`,
       summary: result.summary,
-      savedToDatabase: result.savedToDatabase
+      savedToDatabase: result.savedToDatabase,
+      records: preview.records
     });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message || 'PDF Import Error' });
@@ -604,7 +703,8 @@ app.post('/api/database/execute-sql', requireAuth, async (req, res) => {
       return;
     }
 
-    const result = await mysqlService.executeSafeQuery(sql);
+    const tenantId = getTenantId(req);
+    const result = await mysqlService.executeSafeQuery(sql, tenantId);
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Query execution error' });

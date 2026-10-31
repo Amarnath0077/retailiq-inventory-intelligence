@@ -67,7 +67,7 @@
     "emailVerified": true,
     "provider": "local",
     "createdAt": "2026-01-01T00:00:00.000Z",
-    "lastLoginAt": "2026-10-31T15:34:21.531Z",
+    "lastLoginAt": "2026-10-31T17:13:18.319Z",
     "passwordHash": "7a61d8b5d398fb04d6815dcd561fe35db37d6d60be0bfa263d4117a406cdff952ccde03141b8800ca611ae6d71577da56318f47393f518654d2c93f8b0ca386f",
     "passwordSalt": "retailiq_salt_admin_demo_seed_2026_x89"
   }

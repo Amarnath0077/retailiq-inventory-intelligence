@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { AppSettings, DatabaseStatus, TableSchemaInfo, ImportedDatasetSummary } from '../../types/inventory.ts';
 import { apiFetch } from '../../utils/api.ts';
+import { useAuth } from '../../context/AuthContext.tsx';
+import { saveUserDataset, clearUserDataset } from '../../utils/persistentStorage.ts';
 
 interface SettingsViewProps {
   currentSettings: AppSettings;
@@ -38,6 +40,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdateSettings,
   onRefreshDatabase
 }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'database' | 'csv_import' | 'pdf_import' | 'general' | 'python_bridge'>('database');
   const [thresholdInput, setThresholdInput] = useState<number>(currentSettings.lowStockThreshold);
   const [routingMode, setRoutingMode] = useState<string>(currentSettings.queryRoutingMode);
@@ -264,6 +267,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setIsConnecting(true);
     setConnectNotice(null);
     try {
+      if (user?.id) {
+        await clearUserDataset(user.id);
+      }
       const res = await apiFetch('/api/database/disconnect', { method: 'POST' });
       const data = await res.json();
       setConnectNotice({ type: 'success', message: data.message });
@@ -325,6 +331,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
+        if (user?.id && data.records) {
+          await saveUserDataset({
+            userId: user.id,
+            fileType: 'csv',
+            fileName: name,
+            records: data.records,
+            importedAt: new Date().toISOString()
+          });
+        }
         setCsvImportNotice({ type: 'success', message: data.message });
         setCsvSummary(data.summary);
         fetchDbInfo();
@@ -350,6 +365,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
+        if (user?.id && data.records) {
+          await saveUserDataset({
+            userId: user.id,
+            fileType: 'csv',
+            fileName: `${preset}_sample.csv`,
+            records: data.records,
+            importedAt: new Date().toISOString()
+          });
+        }
         setCsvImportNotice({ type: 'success', message: data.message });
         setCsvSummary(data.summary);
         fetchDbInfo();
@@ -388,6 +412,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
+        if (user?.id && data.records) {
+          await saveUserDataset({
+            userId: user.id,
+            fileType: 'pdf',
+            fileName: pdfFileName || 'document.pdf',
+            records: data.records,
+            importedAt: new Date().toISOString()
+          });
+        }
         setPdfImportNotice({ type: 'success', message: data.message });
         setPdfSummary(data.summary);
         fetchDbInfo();
@@ -404,6 +437,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleResetToMySQL = async () => {
     try {
+      if (user?.id) {
+        await clearUserDataset(user.id);
+      }
       const res = await apiFetch('/api/import/reset', { method: 'POST' });
       const data = await res.json();
       setConnectNotice({ type: 'success', message: data.message });

@@ -10,6 +10,7 @@ import { AnalyticsView } from './components/analytics/AnalyticsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { InventoryMetrics, DatabaseStatus, AppSettings } from './types/inventory.ts';
 import { apiFetch } from './utils/api.ts';
+import { loadUserDataset, saveUserDataset } from './utils/persistentStorage.ts';
 import { RefreshCw, Boxes } from 'lucide-react';
 
 function AuthenticatedApp() {
@@ -53,7 +54,59 @@ function AuthenticatedApp() {
       }
 
       if (healthRes.ok) {
-        const h: DatabaseStatus = await healthRes.json();
+        let h: DatabaseStatus = await healthRes.json();
+
+        // Serverless container cold-start resilience:
+        // If the serverless container restarted with empty RAM, automatically
+        // restore this specific authenticated user's confirmed dataset from user-isolated offline storage.
+        if (!h.hasData && user?.id) {
+          try {
+            const saved = await loadUserDataset(user.id);
+            if (saved && Array.isArray(saved.records) && saved.records.length > 0) {
+              const restoreRes = await apiFetch('/api/dataset/restore', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fileType: saved.fileType,
+                  fileName: saved.fileName,
+                  records: saved.records
+                })
+              });
+              if (restoreRes.ok) {
+                const [freshMetricsRes, freshHealthRes] = await Promise.all([
+                  apiFetch('/api/metrics'),
+                  apiFetch('/api/health')
+                ]);
+                if (freshMetricsRes.ok) {
+                  const freshM = await freshMetricsRes.json();
+                  setMetrics(freshM);
+                }
+                if (freshHealthRes.ok) {
+                  h = await freshHealthRes.json();
+                }
+              }
+            }
+          } catch (restoreErr) {
+            console.warn('Dataset rehydration notice:', restoreErr);
+          }
+        } else if (h.hasData && user?.id) {
+          // Synchronize to persistent client storage in the background
+          apiFetch('/api/dataset/backup')
+            .then(res => res.ok ? res.json() : null)
+            .then(backup => {
+              if (backup && backup.hasData && Array.isArray(backup.records) && backup.records.length > 0) {
+                saveUserDataset({
+                  userId: user.id,
+                  fileType: backup.fileType || 'csv',
+                  fileName: backup.fileName || 'imported_inventory',
+                  records: backup.records,
+                  importedAt: backup.importedAt || new Date().toISOString()
+                }).catch(() => {});
+              }
+            })
+            .catch(() => {});
+        }
+
         setDatabaseStatus(h);
       }
 

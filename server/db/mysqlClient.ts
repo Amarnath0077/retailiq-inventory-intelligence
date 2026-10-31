@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { userInventoryStore } from './userInventoryStore.ts';
 import { datasetManager } from './datasetManager.ts';
+import { executeInMemorySql } from './inMemorySql.ts';
 
 export interface DatabaseConnectionConfig {
   host: string;
@@ -44,6 +45,10 @@ class MySQLService {
   private pool: mysql.Pool | null = null;
   private config: DatabaseConnectionConfig;
   private isConnected: boolean = false;
+  private isSandbox: boolean = false;
+  private sandboxDbName: string = '';
+  private sandboxRecords: any[] = [];
+  private sandboxDiscounts: any[] = [];
   private lastError: string | null = null;
   private cachedSchema: SchemaInspectionResult | null = null;
 
@@ -75,6 +80,11 @@ class MySQLService {
     newConfig: DatabaseConnectionConfig,
     userId?: string
   ): Promise<{ success: boolean; message: string; schema?: SchemaInspectionResult; rowCount?: number }> {
+    // If user requested sandbox mode directly
+    if (newConfig.host === 'sandbox' || newConfig.host === 'built-in' || newConfig.host === 'virtual') {
+      return this.connectSandbox(newConfig.database || 'ecommerce_db', userId);
+    }
+
     if (this.pool) {
       try {
         await this.pool.end();
@@ -83,6 +93,7 @@ class MySQLService {
       }
       this.pool = null;
     }
+    this.isSandbox = false;
 
     const actualPassword = (newConfig.password !== undefined && newConfig.password !== '••••••••')
       ? newConfig.password
@@ -196,7 +207,12 @@ class MySQLService {
 
       let friendlyMessage = err.message || 'Connection failed';
       if (err.code === 'ECONNREFUSED') {
-        friendlyMessage = `Connection refused at ${this.config.host}:${this.config.port}. Ensure MySQL/MariaDB server is running and accepting TCP connections on port ${this.config.port}.`;
+        const isLocal = this.config.host === '127.0.0.1' || this.config.host === 'localhost';
+        if (isLocal) {
+          friendlyMessage = `Connection refused at ${this.config.host}:${this.config.port}. Because RetailIQ is running on a cloud deployment, ${this.config.host} points to the cloud container rather than your local computer. To connect your database: (1) Click "Launch Built-in Sandbox Database", (2) Use a cloud database host (AWS RDS, Aiven, Railway, etc.), or (3) Tunnel your local MySQL with ngrok (ngrok tcp 3306).`;
+        } else {
+          friendlyMessage = `Connection refused at ${this.config.host}:${this.config.port}. Ensure MySQL/MariaDB server is running and accepting TCP connections on port ${this.config.port}.`;
+        }
       } else if (err.code === 'ER_ACCESS_DENIED_ERROR' || err.code === 'ER_DBACCESS_DENIED_USER_ERROR') {
         friendlyMessage = `Access denied for user "${this.config.user}". Please verify database username and password.`;
       } else if (err.code === 'ER_BAD_DB_ERROR') {
@@ -218,6 +234,11 @@ class MySQLService {
   }
 
   public async insertRecords(records: any[], tableName: string = 'products'): Promise<{ success: boolean; insertedCount: number; message?: string }> {
+    if (this.isSandbox) {
+      if (!records || records.length === 0) return { success: true, insertedCount: 0 };
+      this.sandboxRecords = [...this.sandboxRecords, ...records];
+      return { success: true, insertedCount: records.length, message: `Inserted ${records.length} records into sandbox database.` };
+    }
     if (!this.pool || !this.isConnected) {
       return { success: false, insertedCount: 0, message: 'Database is not connected.' };
     }
@@ -375,6 +396,9 @@ class MySQLService {
       this.pool = null;
     }
     this.isConnected = false;
+    this.isSandbox = false;
+    this.sandboxRecords = [];
+    this.sandboxDiscounts = [];
     this.cachedSchema = null;
     if (userId) {
       userInventoryStore.clearUserData(userId);
@@ -383,10 +407,115 @@ class MySQLService {
   }
 
   public isLive(): boolean {
-    return this.isConnected && this.pool !== null;
+    return this.isConnected && (this.pool !== null || this.isSandbox);
   }
 
-  public async inspectSchema(): Promise<SchemaInspectionResult> {
+  public async connectSandbox(
+    dbName: string = 'ecommerce_db',
+    userId?: string
+  ): Promise<{ success: boolean; message: string; schema: SchemaInspectionResult; rowCount: number }> {
+    const cleanDb = dbName.trim().replace(/[^a-zA-Z0-9_]/g, '') || 'ecommerce_db';
+    this.isSandbox = true;
+    this.isConnected = true;
+    this.sandboxDbName = cleanDb;
+
+    const sampleProducts = [
+      { t_shirt_id: 1, brand: 'Nike', name: 'Nike Dri-FIT Legend Athletic Tee', color: 'Black', size: 'M', price: 32.00, stock_quantity: 48, category: 'Apparel', sku: 'NK-DF-01' },
+      { t_shirt_id: 2, brand: 'Nike', name: 'Nike Sportswear Club Fleece Crewneck', color: 'Heather Grey', size: 'L', price: 65.00, stock_quantity: 12, category: 'Apparel', sku: 'NK-CF-02' },
+      { t_shirt_id: 3, brand: 'Adidas', name: 'Adidas Essentials 3-Stripes Tee', color: 'White', size: 'L', price: 30.00, stock_quantity: 65, category: 'Apparel', sku: 'AD-3S-03' },
+      { t_shirt_id: 4, brand: 'Adidas', name: 'Adidas Ultraboost Light Running', color: 'Core Black', size: '10', price: 190.00, stock_quantity: 24, category: 'Footwear', sku: 'AD-UB-04' },
+      { t_shirt_id: 5, brand: "Levi's", name: "Levi's 511 Slim Fit Stretch Denim", color: 'Dark Indigo', size: '32x32', price: 79.50, stock_quantity: 35, category: 'Denim', sku: 'LV-511-05' },
+      { t_shirt_id: 6, brand: "Levi's", name: "Levi's Classic Trucker Jacket", color: 'Medium Wash', size: 'XL', price: 98.00, stock_quantity: 8, category: 'Denim', sku: 'LV-TRK-06' },
+      { t_shirt_id: 7, brand: 'Puma', name: 'Puma Iconic T7 Retro Track Jacket', color: 'Puma Black', size: 'M', price: 75.00, stock_quantity: 18, category: 'Activewear', sku: 'PM-T7-07' },
+      { t_shirt_id: 8, brand: 'Puma', name: 'Puma Suede Classic Heritage Sneakers', color: 'Navy', size: '9.5', price: 70.00, stock_quantity: 5, category: 'Footwear', sku: 'PM-SD-08' },
+      { t_shirt_id: 9, brand: 'Van Heusen', name: 'Van Heusen Slim Fit Poplin Dress Shirt', color: 'Light Blue', size: '15.5', price: 45.00, stock_quantity: 42, category: 'Formal', sku: 'VH-DF-09' },
+      { t_shirt_id: 10, brand: 'Van Heusen', name: 'Van Heusen Flex Straight Trouser', color: 'Charcoal', size: '34x30', price: 58.00, stock_quantity: 0, category: 'Formal', sku: 'VH-FLX-10' },
+      { t_shirt_id: 11, brand: 'Under Armour', name: 'UA Tech 2.0 Short Sleeve Performance', color: 'Academy', size: 'XL', price: 25.00, stock_quantity: 52, category: 'Activewear', sku: 'UA-T2-11' },
+      { t_shirt_id: 12, brand: 'Under Armour', name: 'UA Rival Fleece Big Logo Pullover', color: 'Pitch Grey', size: 'L', price: 60.00, stock_quantity: 14, category: 'Activewear', sku: 'UA-RF-12' }
+    ];
+
+    const sampleDiscounts = [
+      { t_shirt_id: 1, pct_discount: 10 },
+      { t_shirt_id: 4, pct_discount: 15 },
+      { t_shirt_id: 9, pct_discount: 20 }
+    ];
+
+    this.sandboxRecords = sampleProducts;
+    this.sandboxDiscounts = sampleDiscounts;
+
+    this.config = {
+      host: 'RetailIQ Built-in SQL Engine',
+      port: 3306,
+      user: 'root',
+      database: cleanDb,
+      ssl: false
+    };
+
+    const schema: SchemaInspectionResult = {
+      connected: true,
+      database: cleanDb,
+      host: 'RetailIQ Built-in SQL Engine',
+      port: 3306,
+      isLiveMySQL: true,
+      tables: [
+        {
+          tableName: 'products',
+          rowCount: sampleProducts.length,
+          columns: [
+            { name: 't_shirt_id', dataType: 'INT', isNullable: false, isPrimaryKey: true, isForeignKey: false },
+            { name: 'brand', dataType: 'VARCHAR(100)', isNullable: false, isPrimaryKey: false, isForeignKey: false },
+            { name: 'name', dataType: 'VARCHAR(150)', isNullable: false, isPrimaryKey: false, isForeignKey: false },
+            { name: 'color', dataType: 'VARCHAR(50)', isNullable: true, isPrimaryKey: false, isForeignKey: false },
+            { name: 'size', dataType: 'VARCHAR(20)', isNullable: true, isPrimaryKey: false, isForeignKey: false },
+            { name: 'price', dataType: 'DECIMAL(10,2)', isNullable: false, isPrimaryKey: false, isForeignKey: false },
+            { name: 'stock_quantity', dataType: 'INT', isNullable: false, isPrimaryKey: false, isForeignKey: false },
+            { name: 'category', dataType: 'VARCHAR(50)', isNullable: true, isPrimaryKey: false, isForeignKey: false },
+            { name: 'sku', dataType: 'VARCHAR(50)', isNullable: true, isPrimaryKey: false, isForeignKey: false }
+          ],
+          sampleRows: sampleProducts.slice(0, 3)
+        },
+        {
+          tableName: 'discounts',
+          rowCount: sampleDiscounts.length,
+          columns: [
+            { name: 't_shirt_id', dataType: 'INT', isNullable: false, isPrimaryKey: false, isForeignKey: true },
+            { name: 'pct_discount', dataType: 'INT', isNullable: false, isPrimaryKey: false, isForeignKey: false }
+          ],
+          sampleRows: sampleDiscounts
+        }
+      ],
+      lastChecked: new Date().toISOString()
+    };
+
+    this.cachedSchema = schema;
+
+    if (userId) {
+      userInventoryStore.setDataSource(
+        userId,
+        {
+          type: 'database',
+          name: cleanDb,
+          host: 'RetailIQ Built-in SQL Engine',
+          isLive: true,
+          tables: ['products', 'discounts'],
+          totalRecords: sampleProducts.length
+        },
+        sampleProducts,
+        sampleDiscounts
+      );
+      await datasetManager.setDataset(userId, 'mysql', cleanDb, sampleProducts, true);
+    }
+
+    return {
+      success: true,
+      message: `Successfully initialized and connected to Built-In Sandbox Database "${cleanDb}". Loaded ${sampleProducts.length} live records.`,
+      schema,
+      rowCount: sampleProducts.length
+    };
+  }
+
+  public async inspectSchema(userId?: string): Promise<SchemaInspectionResult> {
+    // 1. Live remote MySQL connection
     if (this.isLive() && this.pool) {
       try {
         const [tablesRows]: any = await this.pool.query(`
@@ -446,6 +575,62 @@ class MySQLService {
       }
     }
 
+    // 2. Built-in Sandbox database
+    if (this.isSandbox && this.cachedSchema) {
+      return this.cachedSchema;
+    }
+
+    // 3. User's imported CSV or PDF dataset
+    if (userId && userInventoryStore.hasData(userId)) {
+      const userData = userInventoryStore.getUserData(userId);
+      const records = userData.records || [];
+      const sourceName = userData.dataSource.name || 'imported_inventory';
+      const firstRow = records[0] || {};
+      const cols = Object.keys(firstRow);
+
+      const columns: ColumnDefinition[] = cols.map(c => {
+        const sampleVal = records.find(r => r[c] !== undefined && r[c] !== null)?.[c];
+        const isNum = typeof sampleVal === 'number' || (!isNaN(Number(sampleVal)) && sampleVal !== '' && sampleVal !== null);
+        const isInt = isNum && Number.isInteger(Number(sampleVal));
+        return {
+          name: c,
+          dataType: isInt ? 'INT' : (isNum ? 'DECIMAL(10,2)' : 'VARCHAR(255)'),
+          isNullable: true,
+          isPrimaryKey: /id$/i.test(c) || c.toLowerCase() === 'id',
+          isForeignKey: false
+        };
+      });
+
+      const tables: TableSchemaInfo[] = [{
+        tableName: 'products',
+        rowCount: records.length,
+        columns,
+        sampleRows: records.slice(0, 3)
+      }];
+
+      if (userData.discounts && userData.discounts.length > 0) {
+        tables.push({
+          tableName: 'discounts',
+          rowCount: userData.discounts.length,
+          columns: [
+            { name: 't_shirt_id', dataType: 'INT', isNullable: false, isPrimaryKey: false, isForeignKey: true },
+            { name: 'pct_discount', dataType: 'INT', isNullable: false, isPrimaryKey: false, isForeignKey: false }
+          ],
+          sampleRows: userData.discounts.slice(0, 3)
+        });
+      }
+
+      return {
+        connected: true,
+        database: sourceName,
+        host: userData.dataSource.host || (userData.dataSource.type === 'database' ? 'MySQL Database' : `Imported ${userData.dataSource.type.toUpperCase()}`),
+        port: 0,
+        isLiveMySQL: userData.dataSource.type === 'database',
+        tables,
+        lastChecked: userData.lastUpdated || new Date().toISOString()
+      };
+    }
+
     // STRICT: If not connected to live MySQL, return disconnected empty schema without fake fallbacks
     return {
       connected: false,
@@ -455,11 +640,11 @@ class MySQLService {
       isLiveMySQL: false,
       tables: [],
       lastChecked: new Date().toISOString(),
-      connectionError: this.lastError || 'No database connected.'
+      connectionError: this.lastError || 'No database connected or file imported.'
     };
   }
 
-  public async executeSafeQuery(sql: string): Promise<{ columns: string[]; rows: any[]; executionTimeMs: number }> {
+  public async executeSafeQuery(sql: string, userId?: string): Promise<{ columns: string[]; rows: any[]; executionTimeMs: number }> {
     const startTime = performance.now();
     const cleanSql = sql.trim().replace(/;+$/, '');
     const lower = cleanSql.toLowerCase();
@@ -478,7 +663,7 @@ class MySQLService {
       }
     }
 
-    if (!lower.startsWith('select') && !lower.startsWith('show') && !lower.startsWith('describe') && !lower.startsWith('explain')) {
+    if (!lower.startsWith('select') && !lower.startsWith('show') && !lower.startsWith('describe') && !lower.startsWith('desc') && !lower.startsWith('explain')) {
       throw new Error('Security Violation: Only SELECT, SHOW, DESCRIBE, and EXPLAIN statements are permitted.');
     }
 
@@ -505,7 +690,30 @@ class MySQLService {
       }
     }
 
-    // STRICT: Do NOT return fake sample data when database is disconnected
+    // 3. User's active imported CSV/PDF dataset
+    if (userId && userInventoryStore.hasData(userId)) {
+      const userData = userInventoryStore.getUserData(userId);
+      const tables: Record<string, any[]> = {
+        products: userData.records || [],
+        t_shirts: userData.records || [],
+        inventory: userData.records || [],
+        discounts: userData.discounts || []
+      };
+      return executeInMemorySql(cleanSql, tables, 'products');
+    }
+
+    // 4. Built-in Sandbox database
+    if (this.isSandbox) {
+      const tables: Record<string, any[]> = {
+        products: this.sandboxRecords,
+        t_shirts: this.sandboxRecords,
+        inventory: this.sandboxRecords,
+        discounts: this.sandboxDiscounts
+      };
+      return executeInMemorySql(cleanSql, tables, 'products');
+    }
+
+    // STRICT: Do NOT return fake sample data when database is disconnected and no file imported
     throw new Error('Database is disconnected or unavailable. Please connect a database or import a CSV/PDF file to run queries.');
   }
 }

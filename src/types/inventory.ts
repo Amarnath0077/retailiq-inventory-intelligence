@@ -156,6 +156,7 @@ export interface ImportedDatasetSummary {
 
 export interface DatabaseStatus {
   connected: boolean;
+  hasData?: boolean;
   database: string;
   host: string;
   port: number;

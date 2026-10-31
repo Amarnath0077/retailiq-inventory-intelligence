@@ -12,6 +12,8 @@ import {
   Table as TableIcon
 } from 'lucide-react';
 import { apiFetch } from '../../utils/api.ts';
+import { useAuth } from '../../context/AuthContext.tsx';
+import { saveUserDataset } from '../../utils/persistentStorage.ts';
 
 interface FileImportModalProps {
   isOpen: boolean;
@@ -44,6 +46,7 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({
   onImportSuccess,
   isDatabaseConnected = false
 }) => {
+  const { user } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [fileType, setFileType] = useState<'csv' | 'pdf'>('csv');
   const [isDragging, setIsDragging] = useState(false);
@@ -158,6 +161,18 @@ export const FileImportModal: React.FC<FileImportModalProps> = ({
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.message || 'Import confirmation failed.');
+      }
+
+      // Persist to user-isolated storage to survive serverless container recycles
+      if (user?.id) {
+        await saveUserDataset({
+          userId: user.id,
+          fileType: previewData.fileType,
+          fileName: previewData.fileName,
+          records: previewData.records,
+          importedAt: new Date().toISOString(),
+          summary: data.summary
+        });
       }
 
       // Success: trigger reload and close
