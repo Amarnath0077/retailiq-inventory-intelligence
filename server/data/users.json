@@ -58,5 +58,17 @@
     "lastLoginAt": "2026-10-30T10:27:09.403Z",
     "passwordHash": "7b621b0fab40459172e326f5bd2fc7f7628b8ffcd770ae05923f6f6bc50d6536d8672f5a02a849b4a0babdca007a5aac2393e0a49553f5f7814bb26b86b7bf3d",
     "passwordSalt": "f65634142748ace6288a70fa2827992d"
+  },
+  {
+    "id": "usr_admin_default_lead",
+    "email": "manager@retailiq.internal",
+    "name": "Inventory Operations Lead",
+    "role": "admin",
+    "emailVerified": true,
+    "provider": "local",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "lastLoginAt": "2026-10-31T15:34:21.531Z",
+    "passwordHash": "7a61d8b5d398fb04d6815dcd561fe35db37d6d60be0bfa263d4117a406cdff952ccde03141b8800ca611ae6d71577da56318f47393f518654d2c93f8b0ca386f",
+    "passwordSalt": "retailiq_salt_admin_demo_seed_2026_x89"
   }
 ]

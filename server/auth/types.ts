@@ -34,3 +34,17 @@ export interface AuthResponse {
   message?: string;
   requiresEmailVerification?: boolean;
 }
+
+export interface TokenClaims {
+  uid: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  role: 'admin' | 'inventory_manager' | 'analyst';
+  emailVerified: boolean;
+  provider: 'local' | 'google';
+  iat: number;
+  exp: number;
+  sid: string;
+}
+

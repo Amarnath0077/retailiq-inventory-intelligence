@@ -21,13 +21,43 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Cross-origin and security headers for preview deployments and iframes
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-tenant-id, x-auth-token');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
+
+// Normalize API route if accessed without /api prefix
+app.use((req, res, next) => {
+  if (req.url && !req.url.startsWith('/api') && !req.url.startsWith('/_') && !req.url.startsWith('/assets') && !req.url.includes('.')) {
+    const apiEndpoints = ['/auth', '/health', '/metrics', '/inventory', '/database', '/import', '/datasets', '/analytics', '/ai', '/settings'];
+    if (apiEndpoints.some(ep => req.url.startsWith(ep))) {
+      req.url = '/api' + req.url;
+    }
+  }
+  next();
+});
+
 // Helper to extract isolated tenant ID from authenticated user or request header
 function getTenantId(req: express.Request): string {
   return req.user?.id || (req.headers['x-tenant-id'] as string) || 'default';
 }
 
-// Authentication Router
+// Authentication Router (support both /api/auth and /auth)
 app.use('/api/auth', authRouter);
+app.use('/auth', authRouter);
 
 // Application in-memory settings state
 let currentSettings = {

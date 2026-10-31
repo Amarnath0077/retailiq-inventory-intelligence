@@ -61,5 +61,14 @@
       "createdAt": 1793356029403,
       "expiresAt": 1793960829403
     }
+  ],
+  [
+    "eyJ1aWQiOiJ1c3JfYWRtaW5fZGVmYXVsdF9sZWFkIiwiZW1haWwiOiJtYW5hZ2VyQHJldGFpbGlxLmludGVybmFsIiwibmFtZSI6IkludmVudG9yeSBPcGVyYXRpb25zIExlYWQiLCJyb2xlIjoiYWRtaW4iLCJlbWFpbFZlcmlmaWVkIjp0cnVlLCJwcm92aWRlciI6ImxvY2FsIiwiaWF0IjoxNzkzNDYwODYxNTMxLCJleHAiOjE3OTQwNjU2NjE1MzEsInNpZCI6IjBiYjk3MTQwNjUyMjBjMWIyZTY4NGRmOTQxYjJhZGU5In0.J-3WGByKL0_wOd9KLlzTd9BjT46ZcNK4yjb8AfrB-OM",
+    {
+      "id": "0bb9714065220c1b2e684df941b2ade9",
+      "userId": "usr_admin_default_lead",
+      "createdAt": 1793460861531,
+      "expiresAt": 1794065661531
+    }
   ]
 ]

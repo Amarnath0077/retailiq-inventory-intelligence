@@ -31,9 +31,16 @@ export function extractAuthToken(req: Request): string | null {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7).trim();
   }
+  const xAuthToken = req.headers['x-auth-token'];
+  if (typeof xAuthToken === 'string' && xAuthToken.trim()) {
+    return xAuthToken.trim();
+  }
   const cookies = parseCookie(req.headers.cookie);
   if (cookies['retailiq_session']) {
     return cookies['retailiq_session'];
+  }
+  if (cookies['retailiq_token']) {
+    return cookies['retailiq_token'];
   }
   return null;
 }
